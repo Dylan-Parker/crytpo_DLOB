@@ -1,4 +1,4 @@
-# Project To-Do Outline with Parallel & Serial Annotations
+# Project Outline 
 
 ## 📂 Phase 0 – Project Setup & Coordination
 > **Serial** (prerequisite for everything else)
