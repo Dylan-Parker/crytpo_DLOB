@@ -28,8 +28,8 @@ def create_sequences(input_data: np.ndarray, target_data: np.ndarray, sequence_l
         X.append(input_data[i:(i + sequence_length), :])
         # Label: corresponds to the time step *after* the sequence ends (index i+T)
         # Adjust if your label definition differs (e.g., label for last element: target_data[i + sequence_length - 1])
-        y.append(target_data[i + sequence_length]) # Predict step immediately after sequence
-        # OR: y.append(target_data[i + sequence_length -1]) # Label corresponds to last element of sequence
+        # y.append(target_data[i + sequence_length]) # Predict step immediately after sequence
+        y.append(target_data[i + sequence_length -1]) # Label corresponds to last element of sequence
 
     # Check if sequences were actually created before converting to numpy array
     if not X:
