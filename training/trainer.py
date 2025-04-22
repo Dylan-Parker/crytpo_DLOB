@@ -1,12 +1,158 @@
 # training/trainer.py
+import os
+import torch
+import random
+import numpy as np
+from torch import nn
+from torch.utils.data import DataLoader
+from typing import Optional
+
+class Config:
+    def __init__(self, config_dict):
+        for key, value in config_dict.items():
+            if isinstance(value, dict):
+                value = Config(value)
+            setattr(self, key, value)
+
+
 class Trainer:
-    def __init__(self, model, optimizer, loss_fn, device, config): ...
-    def train_epoch(self, train_loader): # -> avg_loss
-        # Loop through batches, call model.forward, calculate loss, backpropagate
-        ...
-    def evaluate(self, val_loader): # -> metrics_dict
+    def __init__(
+            self,
+            config : Config,
+            train_dataset: torch.utils.data.Dataset,
+            val_dataset: torch.utils.data.Dataset,
+            test_dataset: Optional[torch.utils.data.Dataset] = None,
+            device: Optional[torch.device] = None,
+            output_dir: Optional[str] = None
+    ):
+        self.device = device or self._get_device()
+        self.output_dir = output_dir
+        self.config = config
+        self.batch_size = config.train.batch_size
+        self.num_workers = config.train.num_workers
+        self.lr = config.train.lr
+        self.n_epochs = config.train.n_epochs
+
+        self._set_seed((config.seed))
+
+        # data loaders
+        self.train_loader = DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
+        self.val_loader = DataLoader(
+            self.val_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
+        if self.test_ds is not None:
+            self.test_loader = DataLoader(
+                self.test_ds,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                pin_memory=True
+            )
+
+        # model / criterion / optimizer
+        self.model = self.build_model().to(self.device)
+        self.criterion = self._init_criterion()
+        self.optimizer = self._init_optimizer(self.model)
+    @staticmethod
+    def _get_device():
+        # if you want to default to cuda first change order.
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            device = torch.device("mps")
+            print("Using MPS.")
+        elif torch.cuda.is_available():
+            device = torch.device("cuda")
+            print(f"Using CUDA (gpu: {torch.cuda.get_device_name(0)}).")
+        else:
+            device = torch.device("cpu")
+            print("Using CPU")
+        return device
+
+    @staticmethod
+    def _set_seed(seed: int):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+    def _init_criterion(self):
+        # Override if you need a different loss
+        return nn.CrossEntropyLoss()
+
+    def _init_optimizer(self, net: nn.Module):
+        opt_cfg = self.config.optimizer
+        if opt_cfg.type.lower() == 'sgd':
+            return torch.optim.SGD(
+                net.parameters(),
+                lr=self.lr,
+                momentum=opt_cfg.momentum,
+                weight_decay=opt_cfg.weight_decay
+            )
+        elif opt_cfg.type.lower() == 'adamw':
+            return torch.optim.AdamW(
+                net.parameters(),
+                lr=self.lr,
+                betas=opt_cfg.betas,
+                weight_decay=opt_cfg.weight_decay
+            )
+        else:
+            raise ValueError(f"Unsupported optimizer: {opt_cfg.type}")
+
+    def evaluate(self): # -> metrics_dict
         # Evaluate model on validation set
-        ...
-    def train(self, train_loader, val_loader, num_epochs): # -> training_history
+        self.model.eval()
+        running_loss = 0.0
+        total = 0
+        with torch.no_grad():
+            for x, y in self.val_loader:
+                x, y = x.to(self.device), y.to(self.device)
+                logits = self.model(x)
+                loss = self.criterion(logits, y)
+                running_loss += loss.item() * x.size(0)
+                total += x.size(0)
+
+        val_loss = running_loss / total
+        self.val_loss.append(val_loss)
+        print(f"  ↳ Val loss: {val_loss:.4f}")
+
+    def train(self): # -> training_history
         # Main training loop
-        ...
+        self.train_loss = []
+        self.val_loss = []
+        for epoch in range(1, self.n_epochs + 1):
+            self.model.train()
+            running_loss = 0.0
+            total = 0
+            for x, y in self.train_loader:
+                x, y = x.to(self.device), y.to(self.device)
+                self.optimizer.zero_grad()
+                logits = self.model(x)
+                loss = self.criterion(logits, y)
+                loss.backward()
+                self.optimizer.step()
+
+                running_loss += loss.item() * x.size(0)
+                total += x.size(0)
+
+            epoch_loss = running_loss / total
+            self.train_loss.append(epoch_loss)
+            print(f"Epoch {epoch}/{self.n_epochs} — train loss: {epoch_loss:.4f}")
+            self.evaluate()
+
+
+    def save_model(self, name: str = "model.pt"):
+        path = os.path.join(self.output_dir, name)
+        torch.save(self.model.state_dict(), path)
+        print(f"Model saved to {path}")
