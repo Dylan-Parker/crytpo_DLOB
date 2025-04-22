@@ -7,9 +7,6 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report
 
-
-
-
 def reduce_mem_usage(df, precision=np.float32):
     """
     Iterate through all the columns of a dataframe and downcast numerical data types
@@ -122,15 +119,16 @@ def construct_target_prices(dataset : pd.DataFrame, target_type : str, num_level
         If target_type is not one of the supported types.
     """
 
+
     if target_type == 'simple_midpoint':
         # Use only level 1 for a simple mid price.
-        dataset['target_price'] = (dataset['b1'] + dataset['a1']) / 2
+        dataset['target_price'] = (dataset['b0'] + dataset['a0']) / 2
 
     elif target_type == 'volume_weighted':
         total_value = 0
         total_volume = 0
-        # Iterate through levels 1 to num_levels.
-        for level in range(1, num_levels + 1):
+        # Iterate through levels 0 to num_levels.
+        for level in range(num_levels):
             bid_price = dataset[f'b{level}']
             ask_price = dataset[f'a{level}']
             bid_volume = dataset[f'bq{level}']
@@ -145,8 +143,8 @@ def construct_target_prices(dataset : pd.DataFrame, target_type : str, num_level
     elif target_type == 'micro_price':
         numerator = 0
         denominator = 0
-        # Iterate through levels 1 to num_levels.
-        for level in range(1, num_levels + 1):
+        # Iterate through levels 0 to num_levels.
+        for level in range(num_levels):
             bid_price = dataset[f'b{level}']
             ask_price = dataset[f'a{level}']
             bid_volume = dataset[f'bq{level}']
@@ -164,3 +162,139 @@ def construct_target_prices(dataset : pd.DataFrame, target_type : str, num_level
 
     return dataset.loc[:,["target_price"]].copy()
 
+
+def construct_labels_slow(
+        targets: pd.DataFrame,
+        theta: float,
+        horizon: int = 20,
+) -> pd.DataFrame :
+    """
+    Constructs 0/1/2 labels from the percentage change between
+    the average of [t-horizon ... t] and [t+1 ... t+horizon].
+
+    0 : Δ < -θ
+    1 : -θ ≤ Δ ≤ θ
+    2 : Δ > θ
+
+    If theta is None, choose θ = 33rd percentile of |Δ| for balance.
+
+    Returns
+    -------
+    labels : pd.DataFrame
+        Single‐column DataFrame indexed like `targets`, dtype "Int64" (nullable).
+    theta  : float
+        The threshold actually used.
+    """
+    # Prepare output
+    labels = pd.DataFrame(index=targets.index, columns=["label"], dtype="Int64")
+
+    # Extract the series of values (assumes your price column is the first one)
+    vals = targets.iloc[:, 0].to_numpy(dtype=float)
+    N = len(vals)
+
+    # Compute returns array (NaN where we don't have full windows)
+    delta = np.full(N, np.nan, dtype=float)
+    for t in range(N):
+        if t >= horizon and t + horizon < N:
+            past = vals[t - horizon: t + 1]  # includes t
+            fut = vals[t + 1: t + 1 + horizon]  # next horizon points
+            delta[t] = (fut.mean() - past.mean()) / past.mean()
+
+
+    # Assign labels
+    lab = np.full(N, pd.NA, dtype="Int64")
+    lab[delta < -theta] = 0
+    lab[(delta >= -theta) & (delta <= theta)] = 1
+    lab[delta > theta] = 2
+
+    labels["label"] = lab
+    return labels
+
+
+def construct_labels(
+        targets: pd.DataFrame,
+        horizon: int,
+        theta: float
+) -> pd.DataFrame:
+    """
+    Vectorized label construction using sliding_window_view.
+
+    Parameters
+    ----------
+    targets : pd.DataFrame
+        DataFrame with a single column of prices (e.g. mid‐price), indexed by time.
+    horizon : int
+        Look‐ahead horizon h.
+    theta : float
+        Threshold for classifying returns.
+
+    Returns
+    -------
+    labels_df : pd.DataFrame
+        Single‐column DataFrame "label" with Int64 dtype, containing 0/1/2 or <NA> at the edges.
+    """
+    vals = targets.iloc[:, 0].to_numpy(dtype=float)
+    N = len(vals)
+
+    # past windows covering [t-horizon ... t], length=horizon+1
+    Wp = np.lib.stride_tricks.sliding_window_view(vals, window_shape=horizon + 1)
+    past_means = Wp.mean(axis=1)  # shape: (N - horizon,)
+
+    # future windows covering [t+1 ... t+horizon], length=horizon
+    Wf = np.lib.stride_tricks.sliding_window_view(vals, window_shape=horizon)
+    future_means = Wf.mean(axis=1)  # shape: (N - horizon + 1,)
+
+    # allocate delta and fill for valid t = horizon ... N-horizon-1
+    delta = np.full(N, np.nan, dtype=float)
+    idx = np.arange(horizon, N - horizon)
+    delta[idx] = (future_means[idx + 1] - past_means[idx - horizon]) / past_means[idx - horizon]
+
+    # build nullable Int64 label series
+    labels = pd.Series(pd.NA, index=targets.index, dtype="Int64")
+    labels[delta < -theta] = 0
+    labels[(delta >= -theta) & (delta <= theta)] = 1
+    labels[delta > theta] = 2
+
+    return labels.to_frame(name="label")
+
+
+def normalize_dataset(
+        dataset : pd.DataFrame,
+        mean_q : float =None,
+        mean_p : float =None,
+        std_q : float =None,
+        std_p : float =None
+) -> (pd.DataFrame, dict):
+    """
+    Assumes that data is formatted wtih columns  like [b0, bq0, b1, bq1, ... ] e.g. alternating between price and quantity
+    returns normalized dataset and dictionary of statistics.
+    """
+    if (mean_q is None) or (std_q is None):
+        mean_q = dataset.iloc[:, 1::2].stack().mean()
+        std_q = dataset.iloc[:, 1::2].stack().std()
+
+    if (mean_p is None) or (std_p is None):
+        mean_p = dataset.iloc[:, 0::2].stack().mean()
+        std_p = dataset.iloc[:, 0::2].stack().std()
+
+    price_cols = dataset.columns[0::2]
+    size_cols = dataset.columns[1::2]
+
+    for col in size_cols:
+        dataset[col] = dataset[col].astype("float64")
+        dataset[col] = (dataset[col] - mean_q) / std_q
+
+    for col in price_cols:
+        dataset[col] = dataset[col].astype("float64")
+        dataset[col] = (dataset[col] - mean_p) / std_p
+
+    if dataset.isnull().values.any():
+        raise ValueError("data contains null value")
+
+    statistics = {
+        "mean_q" : mean_q,
+        "mean_p" : mean_p,
+        "std_q" : std_q,
+        "std_p" : std_p
+    }
+    return dataset, statistics
