@@ -33,7 +33,7 @@ class TCNClassifier(nn.Module):
             lookahead=0
         )
 
-        # Final linear layer (Dense in TensorFlow)
+        # Final linear layer
         self.fc = nn.Linear(64, self.output_size)
 
     def forward(self, x):
