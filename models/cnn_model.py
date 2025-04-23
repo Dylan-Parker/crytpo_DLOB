@@ -1,5 +1,5 @@
-#Reference: /notebooks/CNN Deeplearning v2 (4).ipynb
-#data processing and training available there
+# Reference: /notebooks/CNN Deeplearning v2 (4).ipynb
+# data processing and training available there
 
 from models.base_model import BaseModel
 import os
@@ -15,13 +15,13 @@ from sklearn.metrics import classification_report
 import torch
 import torch.nn.functional as F
 
-class CNNModel(nn.Module):
+class CNNClassifier(nn.Module):
     """
     Conv2D → Reshape → Conv1D → MaxPool1D → Conv1D → MaxPool1D → BiLSTM → Dense → Dense → Output
     Input: (batch_size, 100, 40, 1)
     """
     def __init__(self, config):
-        super(CNNModel, self).__init__(config)
+        super(CNNClassifier, self).__init__(config)
         # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
         # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
         self.D = config("D")
