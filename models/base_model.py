@@ -12,6 +12,14 @@ class BaseModel(nn.Module, ABC):
         # x: Input batch tensor (batch_size, time_steps, features)
         pass
 
+    def train(self):
+        # special training logic / considerations
+        pass
+
+    def eval(self):
+        # special eval logic / considerations
+        pass
+
 
 
 # models/base_model.py

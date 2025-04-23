@@ -1,5 +1,6 @@
 
-# models/linear_model.py
+from models.base_model import BaseModel
+
 class LinearModel(BaseModel):
      def __init__(self, config):
         super().__init__(config)
