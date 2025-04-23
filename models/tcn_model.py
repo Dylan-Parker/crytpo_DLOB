@@ -1,5 +1,5 @@
 # Reference: notebooks/copy of DepthANalysis (1).ipynb
-# data  processing, model training and evaluation available there 
+# data processing, model training and evaluation available there 
 
 from models.base_model import BaseModel
 import torch
