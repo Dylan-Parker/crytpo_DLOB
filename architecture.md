@@ -18,7 +18,7 @@ project_root/
 │   └── hybrid_model.py      # CNN-Transformer 
 ├── training/                # Training logic
 │   ├── __init__.py
-│   └── trainer.py           # Training loops, optimizers, loss functions
+│   └── trainer.py           # High level training loops for pipe-line
 ├── evaluation/              # Evaluation & metrics
 │   ├── __init__.py
 │   └── evaluator.py         # Calculates F1, accuracy, MAE, etc. 
