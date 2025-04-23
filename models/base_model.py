@@ -6,16 +6,21 @@ class BaseModel(nn.Module, ABC):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.train_mode = True
 
     @abstractmethod
     def forward(self, x): # -> model_output (logits/predictions)
         # x: Input batch tensor (batch_size, time_steps, features)
-        pass
+        out = None
+
+        return out
 
     def train(self):
         # special training logic / considerations
-        pass
+        self.train_mode = True
+        return
 
     def eval(self):
         # special eval logic / considerations
-        pass
+        self.train_mode = False
+        return

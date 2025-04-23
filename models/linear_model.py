@@ -7,3 +7,11 @@ class LinearModel(BaseModel):
         # Define linear layers (possibly after flattening time steps)
         ...
      def forward(self, x): ...
+
+     def train(self):
+         # special training logic / considerations
+         pass
+
+     def eval(self):
+         # special eval logic / considerations
+         pass
