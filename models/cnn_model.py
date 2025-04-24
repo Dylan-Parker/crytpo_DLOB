@@ -14,15 +14,15 @@ class CNNClassifier(nn.Module):
     Conv2D → Reshape → Conv1D → MaxPool1D → Conv1D → MaxPool1D → BiLSTM → Dense → Dense → Output
     Input: (batch_size, 100, 40, 1)
     """
-    def __init__(self, config):
+    def __init__(self, config, input_shape, device):
         super(CNNClassifier, self).__init__(config)
         # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
         # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
-        self.D = config("D")
-        self.batch_size = config("batch_size")
-        self.nchannel=config("nchannel")
+        self.D =
+        self.batch_size = config.batch_size
+        self.hidden_size=config.hidden_size
         # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
-        self.conv2d = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(4, D))
+        self.conv2d = nn.Conv2d(in_channels=1, out_channels=self.hidden_size, kernel_size=(4, D))
         self.leaky_relu = nn.LeakyReLU(negative_slope=0.01)
         # Reshape layer (to reshape for Conv1D)
         self.T = config("T")  # Store T for dynamic reshaping

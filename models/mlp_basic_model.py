@@ -19,6 +19,9 @@ class BasicMLPModel(BaseModel):
     def eval(self):
         self.mode = "eval"
 
+    def test(self):
+        self.mode = "test"
+
     def forward(self, x):
         #Preserve Batch dim when passing to FC Layer
         out = self.layer1(x.view(x.size(0), -1))
