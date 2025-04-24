@@ -5,15 +5,9 @@ from models.base_model import BaseModel
 import os
 import pandas as pd
 import numpy as np
-%matplotlib inline
-import matplotlib.pyplot as plt
-import seaborn as sns
-import gc
-from tqdm import tqdm
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import classification_report
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 
 class CNNClassifier(nn.Module):
     """

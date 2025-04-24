@@ -6,6 +6,8 @@ import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 from typing import Optional
+from models.mlp_basic_model import BasicMLPModel
+from torcheval.metrics.functional import multiclass_f1_score
 
 class Config:
     def __init__(self, config_dict):
@@ -32,7 +34,9 @@ class Trainer:
         self.num_workers = config.train.num_workers
         self.lr = config.train.lr
         self.n_epochs = config.train.n_epochs
-
+        self.train_ds = train_dataset
+        self.val_ds = val_dataset
+        self.test_ds = None or test_dataset
         self._set_seed((config.seed))
 
         # data loaders
@@ -41,14 +45,14 @@ class Trainer:
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=True
+            pin_memory=False
         )
         self.val_loader = DataLoader(
             self.val_ds,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True
+            pin_memory=False
         )
         if self.test_ds is not None:
             self.test_loader = DataLoader(
@@ -56,13 +60,24 @@ class Trainer:
                 batch_size=self.batch_size,
                 shuffle=False,
                 num_workers=self.num_workers,
-                pin_memory=True
+                pin_memory=False
             )
+        print(f"\nDatasets and DataLoaders created.")
+        print(f"Number of training batches: {len(self.train_loader)}")
+        print(f"Number of validation batches: {len(self.val_loader)}")
+        if self.test_ds is not None:
+            print(f"Number of testing batches: {len(self.test_loader)}")
+
+        self.train_loss = []
+        self.val_loss = []
+        self.train_score = []
+        self.val_score = []
 
         # model / criterion / optimizer
-        self.model = self.build_model().to(self.device)
+        self.model = self._build_model().to(self.device)
         self.criterion = self._init_criterion()
         self.optimizer = self._init_optimizer(self.model)
+
     @staticmethod
     def _get_device():
         # if you want to default to cuda first change order.
@@ -86,6 +101,10 @@ class Trainer:
             torch.cuda.manual_seed_all(seed)
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
+
+    def _build_model(self):
+        if self.config.model.type == "mlp_basic_model":
+            return BasicMLPModel(self.config, self.device)
 
     def _init_criterion(self):
         # Override if you need a different loss
@@ -115,30 +134,52 @@ class Trainer:
         self.model.eval()
         running_loss = 0.0
         total = 0
+
+        all_preds = []
+        all_targets = []
+
         with torch.no_grad():
             for x, y in self.val_loader:
                 x, y = x.to(self.device), y.to(self.device)
-                logits = self.model(x)
+                logits = self.model.forward(x)
                 loss = self.criterion(logits, y)
                 running_loss += loss.item() * x.size(0)
                 total += x.size(0)
 
+                preds = logits.argmax(dim=1)
+                all_preds.append(preds)
+                all_targets.append(y)
         val_loss = running_loss / total
         self.val_loss.append(val_loss)
-        print(f"  ↳ Val loss: {val_loss:.4f}")
+
+        preds_tensor = torch.cat(all_preds)
+        target_tensor = torch.cat(all_targets)
+        val_f1 = multiclass_f1_score(
+            input=preds_tensor,
+            target=target_tensor,
+            num_classes=3,
+            average="macro"
+        )
+        self.val_score.append(val_f1)
+        print(f"  ↳ Val loss: {val_loss:.4f} — Val F₁: {val_f1:.4f}")
 
     def train(self): # -> training_history
         # Main training loop
         self.train_loss = []
         self.val_loss = []
+        self.train_score = []
+        self.val_score = []
         for epoch in range(1, self.n_epochs + 1):
             self.model.train()
             running_loss = 0.0
             total = 0
+            all_preds = []
+            all_targets = []
+
             for x, y in self.train_loader:
                 x, y = x.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
-                logits = self.model(x)
+                logits = self.model.forward(x)
                 loss = self.criterion(logits, y)
                 loss.backward()
                 self.optimizer.step()
@@ -146,9 +187,24 @@ class Trainer:
                 running_loss += loss.item() * x.size(0)
                 total += x.size(0)
 
+                preds = logits.argmax(dim=1)
+                all_preds.append(preds)
+                all_targets.append(y)
+
             epoch_loss = running_loss / total
             self.train_loss.append(epoch_loss)
-            print(f"Epoch {epoch}/{self.n_epochs} — train loss: {epoch_loss:.4f}")
+
+            preds_tensor = torch.cat(all_preds)
+            target_tensor = torch.cat(all_targets)
+            train_f1 = multiclass_f1_score(
+                input=preds_tensor,
+                target=target_tensor,
+                num_classes=3,
+                average="macro"
+            )
+            self.train_score.append(train_f1)
+            print(f"Epoch {epoch}/{self.n_epochs} — "
+                  f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
             self.evaluate()
 
 

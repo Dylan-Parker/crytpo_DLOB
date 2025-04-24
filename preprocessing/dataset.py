@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-def create_sequences(input_data: np.ndarray, target_data: np.ndarray, sequence_length: int):
+def create_sequences(input_data: np.ndarray, target_data: np.ndarray, sequence_length: int, precision):
     """
     Creates sequences for time series model input.
 
@@ -36,7 +36,7 @@ def create_sequences(input_data: np.ndarray, target_data: np.ndarray, sequence_l
         return np.array(X), np.array(y)
 
     # Assuming float32 for features and int64 for labels based on typical PyTorch usage
-    return np.array(X, dtype=np.float32), np.array(y, dtype=np.int64)
+    return np.array(X, dtype=precision), np.array(y, dtype=np.int8)
 
 
 class LOBSequenceDataset(Dataset):
@@ -65,8 +65,8 @@ class LOBSequenceDataset(Dataset):
 
         # Convert to tensor
         # Permute features for Conv1D: (seq_len, num_features) -> (num_features, seq_len)
-        x_tensor = torch.tensor(x_np, dtype=torch.float32).permute(1, 0)
-        y_tensor = torch.tensor(y_np, dtype=torch.long)
+        x_tensor = torch.tensor(x_np).permute(1, 0)
+        y_tensor = torch.tensor(y_np)
 
         # Move to device if specified
         if self.device:

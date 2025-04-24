@@ -124,13 +124,13 @@ def construct_target_prices(dataset : pd.DataFrame, target_type : str, num_level
 
     if target_type == 'simple_midpoint':
         # Use only level 1 for a simple mid price.
-        dataset['target_price'] = (dataset['b1'] + dataset['a1']) / 2
+        dataset['target_price'] = (dataset['b0'] + dataset['a0']) / 2
 
     elif target_type == 'volume_weighted':
         total_value = 0
         total_volume = 0
         # Iterate through levels 1 to num_levels.
-        for level in range(1, num_levels + 1):
+        for level in range(num_levels):
             bid_price = dataset[f'b{level}']
             ask_price = dataset[f'a{level}']
             bid_volume = dataset[f'bq{level}']
@@ -146,7 +146,7 @@ def construct_target_prices(dataset : pd.DataFrame, target_type : str, num_level
         numerator = 0
         denominator = 0
         # Iterate through levels 1 to num_levels.
-        for level in range(1, num_levels + 1):
+        for level in range(num_levels):
             bid_price = dataset[f'b{level}']
             ask_price = dataset[f'a{level}']
             bid_volume = dataset[f'bq{level}']
@@ -209,16 +209,19 @@ def calculate_basic_features(df, num_levels=10):
         pd.DataFrame: Dataframe with added feature columns.
     """
     df_feat = df.copy()
-
-    # Mid-price
-    df_feat['mid_price'] = (df_feat['a1'] + df_feat['b1']) / 2.0
-
-    # Spread
-    df_feat['spread'] = df_feat['a1'] - df_feat['b1']
+    bid_price_cols = [f'b{i}' for i in range(num_levels)]
+    ask_price_cols = [f'a{i}' for i in range(num_levels)]
 
     # Volume Imbalance (VIP) - based on specified number of levels
-    bid_vol_cols = [f'bq{i+1}' for i in range(num_levels)]
-    ask_vol_cols = [f'aq{i+1}' for i in range(num_levels)]
+    bid_vol_cols = [f'bq{i}' for i in range(num_levels)]
+    ask_vol_cols = [f'aq{i}' for i in range(num_levels)]
+    df_feat_cols = bid_price_cols + ask_price_cols + bid_vol_cols + ask_vol_cols
+    df_feat = df_feat.loc[:, df_feat_cols]
+    # Mid-price
+    df_feat['mid_price'] = (df_feat['a0'] + df_feat['b0']) / 2.0
+
+    # Spread
+    df_feat['spread'] = df_feat['a0'] - df_feat['b0']
 
     total_bid_vol = df_feat[bid_vol_cols].sum(axis=1)
     total_ask_vol = df_feat[ask_vol_cols].sum(axis=1)
@@ -304,10 +307,10 @@ def preprocess_lob_data(config):
     """
     # 1. Load Data
     df = load_deep_orderbook_dataset(
-        base_path=config.get('data_path', '../data/deep_orderbook/coinbase/'), # Adjusted path
-        num_files=config.get('num_files', None),
-        precision=config.get('precision', np.float32),
-        verbose=config.get('verbose', True)
+        base_path=config.data_path or '../data/deep_orderbook/coinbase/', # Adjusted path
+        num_files=config.num_files or None,
+        precision=config.precision or np.float32,
+        verbose=config.verbose or True
     )
     if df is None or df.empty:
          raise ValueError("Data loading failed or returned empty DataFrame.")
@@ -315,16 +318,16 @@ def preprocess_lob_data(config):
     # 2. Clean Data
     df = clean_data(
         df,
-        strategy=config.get('clean_strategy', 'dropna'),
-        verbose=config.get('verbose', True)
+        strategy=config.clean_strategy or 'dropna',
+        verbose=config.verbose or True
     )
     if df.empty:
         raise ValueError("DataFrame is empty after cleaning.")
 
 
     # 3. Construct the SPECIFIC Target Price Series to use for LABELING
-    label_price_type = config.get('label_price_type', 'simple_midpoint')
-    label_price_levels = config.get('label_price_levels', 1)
+    label_price_type = config.label_price_type or 'simple_midpoint'
+    label_price_levels = config.label_price_levels or 1
     target_price_df = construct_target_prices( # This adds 'target_price' to df temporarily
         df,
         target_type=label_price_type,
@@ -343,17 +346,17 @@ def preprocess_lob_data(config):
     # Ensure this doesn't overwrite the price column used for labeling if it's named differently
     df = calculate_basic_features(
         df,
-        num_levels=config.get('num_levels_features', 10)
+        num_levels=config.num_levels_features or 10
     )
 
     # 5. Create Labels using the SPECIFIC price column constructed in step 3
     labels = create_labels(
         df, # Pass the full df again, create_labels will extract the series
         price_col=labeling_price_column_name, # Use the specific column name
-        method=config.get('label_method', 'tlob'),
-        k=config.get('label_k', 20),
-        h=config.get('label_h', 10),
-        alpha=config.get('label_alpha', 'auto') # Use 'auto' or a specific value
+        method=config.label_method or 'tlob',
+        k=config.label_k or 20,
+        h=config.label_h or 10,
+        alpha=config.label_alpha or 'auto' # Use 'auto' or a specific value
     )
     df = pd.concat([df, labels], axis=1) # Add the 'label' column
 
@@ -489,32 +492,32 @@ def preprocess_lob_data(config):
     """
     # 1. Load Data
     df = load_deep_orderbook_dataset(
-        base_path=config.get('data_path', 'data/coinbase_btc_usd/coinbase/btc_usd/l2_snapshots/100ms/'),
-        num_files=config.get('num_files', None),
-        precision=config.get('precision', np.float32),
+        base_path=config.data_path or 'data/coinbase_btc_usd/coinbase/btc_usd/l2_snapshots/100ms/',
+        num_files=config.num_files or None,
+        precision=config.precision or np.float32,
     )
 
     # 2. Clean Data
     df = clean_data(
         df,
-        strategy=config.get('clean_strategy', 'dropna'),
-        verbose=config.get('verbose', True)
+        strategy=config.clean_strategy or 'dropna',
+        verbose=config.verbose or True
     )
 
     # 3. Calculate Basic Features
     df = calculate_basic_features(
         df,
-        num_levels=config.get('num_levels_features', 10)
+        num_levels=config.num_levels_features or 10
     )
 
     # 4. Create Labels
     labels = create_labels(
         df,
-        price_col=config.get('label_price_col', 'mid_price'),
-        method=config.get('label_method', 'tlob'),
-        k=config.get('label_k', 20),
-        h=config.get('label_h', 10), # Only used if method='tlob'
-        alpha=config.get('label_alpha', 0.0002)
+        price_col=config.label_price_col or 'mid_price',
+        method=config.label_method or 'tlob',
+        k=config.label_k or 20,
+        h=config.label_h or 10, # Only used if method='tlob'
+        alpha=config.label_alpha or 0.0002
     )
     df = pd.concat([df, labels], axis=1)
 
@@ -522,7 +525,7 @@ def preprocess_lob_data(config):
     df.dropna(subset=['label'], inplace=True)
     df['label'] = df['label'].astype(int) # Convert labels to int
 
-    if config.get('verbose', True):
+    if config.verbose or True:
         print(f"Shape after label creation and NaN drop: {df.shape}")
         print("Label distribution:")
         print(df['label'].value_counts(normalize=True))
@@ -532,13 +535,13 @@ def preprocess_lob_data(config):
     # The normalization step should happen in the training script.
 
     # 6. Save Output (Optional)
-    output_path = config.get('output_path', None)
+    output_path = config.output_path or None
     if output_path:
-        if config.get('verbose', True):
+        if config.verbose or True:
             print(f"Saving preprocessed data to {output_path}...")
         # Consider saving format (parquet, feather, hdf5)
         df.to_parquet(output_path, index=True)
-        if config.get('verbose', True):
+        if config.verbose or True:
             print("Save complete.")
         return None # Indicate data was saved
     else:
