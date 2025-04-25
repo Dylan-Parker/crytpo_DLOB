@@ -71,6 +71,7 @@ class LOBSequenceDataset(Dataset):
         # Move to device if specified
         if self.device:
             x_tensor = x_tensor.to(self.device)
-            y_tensor = y_tensor.to(self.device)
+            y_tensor = y_tensor.to(self.device, dtype=torch.long)
+            # at least on mps, f1 score requires conversion to long / int64
 
         return x_tensor, y_tensor

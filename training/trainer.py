@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from typing import Optional
 from models.mlp_basic_model import BasicMLPModel
 from models.cnn_model import CNNClassifier
+from models.base_model import BaseModel
 from torcheval.metrics.functional import multiclass_f1_score
 
 class Config:
@@ -54,41 +55,49 @@ class Trainer:
         self.num_workers = config.train.num_workers
         self.lr = config.train.lr
         self.n_epochs = config.train.n_epochs
+        self.verbose = config.verbose
         self.train_ds = train_dataset
         self.val_ds = val_dataset
         self.test_ds = None or test_dataset
         self._set_seed((config.seed))
-        self.loss_meter = AverageMeter()
-        self.score_meter = AverageMeter()
+        self.train_loss_meter = AverageMeter()
+        self.train_score_meter = AverageMeter()
         self.iter_meter = AverageMeter()
         # data loaders
         self.train_loader = DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=False
+            num_workers=0 if self.device == "mps" else self.num_workers,
+            pin_memory=(self.device == "cuda")
         )
         self.val_loader = DataLoader(
             self.val_ds,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=False
+            num_workers=0 if self.device == "mps" else self.num_workers,
+            pin_memory=(self.device == "cuda")
         )
         if self.test_ds is not None:
             self.test_loader = DataLoader(
                 self.test_ds,
                 batch_size=self.batch_size,
                 shuffle=False,
-                num_workers=self.num_workers,
-                pin_memory=False
+                num_workers=0 if self.device == "mps" else self.num_workers,
+                pin_memory=(self.device == "cuda")
             )
+
+        # Flatten input shape from (B, T, F) or similar
+        sample_batch = next(iter(self.test_loader))[0]
+        print("One batch shape:", next(iter(self.test_loader))[0].shape)
+        self.input_size = (1, sample_batch.shape[1])
+
         print(f"\nDatasets and DataLoaders created.")
         print(f"Number of training batches: {len(self.train_loader)}")
         print(f"Number of validation batches: {len(self.val_loader)}")
         if self.test_ds is not None:
             print(f"Number of testing batches: {len(self.test_loader)}")
+        print(f"Input Size: {self.input_size}")
 
         self.train_loss = []
         self.val_loss = []
@@ -125,8 +134,10 @@ class Trainer:
             torch.backends.cudnn.benchmark = False
 
     def _build_model(self):
+        if self.config.model.type == "base_model":
+            return BaseModel(self.config, self.device, self.input_size)
         if self.config.model.type == "mlp_basic_model":
-            return BasicMLPModel(self.config, self.device)
+            return BasicMLPModel(self.config, self.device, self.input_size)
         if self.config.model.type == "cnn_model":
             return CNNClassifier(self.config, self.train_ds.features.shape, self.device)
 
@@ -155,7 +166,7 @@ class Trainer:
 
     def evaluate(self, data_loader, epoch): # -> metrics_dict
         # Evaluate model on validation set
-        self.model.eval()
+        self.model.set_eval_mode()
         running_loss = 0.0
         total = 0
 
@@ -193,15 +204,18 @@ class Trainer:
         self.val_loss = []
         self.train_score = []
         self.val_score = []
-        self.loss_meter.reset()
-        self.score_meter.reset()
+        self.train_loss_meter.reset()
+        self.train_score_meter.reset()
+
+        print("Starting Training")
+        print(f"Epochs: {self.n_epochs} | Num Batches: {len(self.train_loader)}")
 
         for epoch in range(1, self.n_epochs + 1):
             t1 = time.perf_counter()
-            self.model.train()
+            self.model.set_train_model()
             all_preds = []
             all_targets = []
-
+        #
             for i, (x, y) in enumerate(self.train_loader):
                 start_time = time.perf_counter()
                 x, y = x.to(self.device), y.to(self.device)
@@ -211,7 +225,7 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                self.loss_meter.update(loss.item(),x.size(0))
+                self.train_loss_meter.update(loss.item().cpu().numpy(), x.size(0))
                 preds = logits.argmax(dim=1)
                 all_preds.append(preds)
                 all_targets.append(y)
@@ -219,11 +233,11 @@ class Trainer:
                 if i % int(len(self.train_loader)/10) == 0:
                     print(
                         f'Epoch[Batch]: [{epoch}][{i}/{len(self.train_loader)}]\t'
-                        f'Avg_Loss {self.loss_meter.val:.3f} ({self.loss_meter.avg:.3f})\t',
+                        f'Avg_Loss {self.train_loss_meter.val:.3f} ({self.train_loss_meter.avg:.3f})\t',
                         f'Time {self.iter_meter.val:.3f} ({self.iter_meter.avg:.3f})\t'
                     )
 
-            epoch_loss = self.loss_meter.avg
+            epoch_loss = self.train_loss_meter.avg
             self.train_loss.append(epoch_loss)
             preds_tensor = torch.cat(all_preds)
             target_tensor = torch.cat(all_targets)
@@ -233,11 +247,14 @@ class Trainer:
                 num_classes=3,
                 average="macro"
             )
-            self.score_meter.update(train_f1, 1)
+            self.train_score_meter.update(train_f1.cpu().numpy(), 1)
             self.train_score.append(train_f1.cpu().numpy())
             print(f"Epoch {epoch}/{self.n_epochs} — "
                   f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
+
             self.val_score = self.evaluate(self.val_loader, epoch)
+            self.val_loss.append(self.val_score)
+
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
     def test(self):
@@ -247,3 +264,7 @@ class Trainer:
         path = os.path.join(self.output_dir, name)
         torch.save(self.model.state_dict(), path)
         print(f"Model saved to {path}")
+
+
+    def test_train(self):
+        print("testing train function wil work at all")
