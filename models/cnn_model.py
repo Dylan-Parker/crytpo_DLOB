@@ -18,7 +18,7 @@ class CNNClassifier(nn.Module):
         super(CNNClassifier, self).__init__(config)
         # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
         # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
-        self.D =
+        self.D = config("D")
         self.batch_size = config.batch_size
         self.hidden_size=config.hidden_size
         # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
