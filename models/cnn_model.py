@@ -15,17 +15,19 @@ class CNNClassifier(nn.Module):
     Input: (batch_size, 100, 40, 1)
     """
     def __init__(self, config, input_shape, device):
-        super(CNNClassifier, self).__init__(config)
+        super().__init__()
         # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
         # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
-        self.D = config("D")
-        self.batch_size = config.batch_size
-        self.hidden_size=config.hidden_size
+        self.device = device
+        self.batch_size = config.train.batch_size
+        #self.hidden_size=config.model.hidden_size
+        self.seq_length = input_shape[1]
+        self.num_features = input_shape[2]
         # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
-        self.conv2d = nn.Conv2d(in_channels=1, out_channels=self.hidden_size, kernel_size=(4, D))
+        self.conv2d = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(4, self.num_features))
         self.leaky_relu = nn.LeakyReLU(negative_slope=0.01)
         # Reshape layer (to reshape for Conv1D)
-        self.T = config("T")  # Store T for dynamic reshaping
+        #self.T = config("T")  # Store T for dynamic reshaping
         # First Conv1D layer
         self.conv1d_1 = nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4)
         # Batch Normalization
@@ -39,7 +41,7 @@ class CNNClassifier(nn.Module):
         # MaxPooling1D
         self.maxpool2 = nn.MaxPool1d(kernel_size=2)
         # Bidirectional LSTM
-        self.lstm = nn.LSTM(input_size=22, hidden_size=64, bidirectional=True, batch_first=True)
+        self.lstm = nn.LSTM(input_size=32, hidden_size=64, bidirectional=True, batch_first=True)
         # Dense layers
         self.fc1 = nn.Linear(64 * 2, 32)  # *2 because it's bidirectional
         self.fc2 = nn.Linear(32, 32)
@@ -47,6 +49,8 @@ class CNNClassifier(nn.Module):
 
     def forward(self, x):
         # Conv2D
+        x.to(self.device)
+        x = x.unsqueeze(1)
         x = self.conv2d(x)
         x = self.leaky_relu(x)
         # Reshape from Conv2D output to match Conv1D input
@@ -67,6 +71,7 @@ class CNNClassifier(nn.Module):
         # Check the shape before LSTM
         #print("Shape before LSTM:", x.shape) # Print the shape before entering LSTM
         # Bidirectional LSTM
+        x = x.permute(0,2,1)
         x, _ = self.lstm(x)
         x = x[:, -1, :]  # Last time step
         # Dense layers
