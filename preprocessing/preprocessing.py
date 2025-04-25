@@ -287,7 +287,6 @@ def create_labels(df: pd.DataFrame, price_col='mid_price', method='tlob', k=20, 
         raise ValueError(f"Price column '{price_col}' not found in DataFrame.")
 
     price_series = df[price_col] # Extract the price series
-
     if method == 'tlob':
         # Pass the extracted Series to _create_labels_tlob
         return _create_labels_tlob(price_series, k, h, alpha)

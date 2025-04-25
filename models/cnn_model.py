@@ -24,62 +24,87 @@ class CNNClassifier(nn.Module):
         self.seq_length = input_shape[1]
         self.num_features = input_shape[2]
         # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
-        self.conv2d = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(4, self.num_features))
-        self.leaky_relu = nn.LeakyReLU(negative_slope=0.01)
-        # Reshape layer (to reshape for Conv1D)
-        #self.T = config("T")  # Store T for dynamic reshaping
-        # First Conv1D layer
-        self.conv1d_1 = nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4)
-        # Batch Normalization
-        self.bn1 = nn.BatchNorm1d(16)
-        # MaxPooling1D
-        self.maxpool1 = nn.MaxPool1d(kernel_size=2)
-        # Second Conv1D layer
-        self.conv1d_2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3)
-        # Batch Normalization
-        self.bn2 = nn.BatchNorm1d(32)
-        # MaxPooling1D
-        self.maxpool2 = nn.MaxPool1d(kernel_size=2)
-        # Bidirectional LSTM
-        self.lstm = nn.LSTM(input_size=32, hidden_size=64, bidirectional=True, batch_first=True)
-        # Dense layers
-        self.fc1 = nn.Linear(64 * 2, 32)  # *2 because it's bidirectional
-        self.fc2 = nn.Linear(32, 32)
-        self.fc3 = nn.Linear(32, 3)  # 3 output classes for softmax
+        self.conv1d_0 = nn.Conv1d(in_channels=self.num_features, out_channels=16, kernel_size=4, padding='same', bias=False)
+        self.pool1 = nn.MaxPool1d(2)
+
+        self.convblock1 = nn.Sequential(
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.BatchNorm1d(16),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.BatchNorm1d(16),
+        )
+
+        self.a1 = nn.ReLU()
+
+        self.convblock2 = nn.Sequential(
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.BatchNorm1d(16),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.BatchNorm1d(16),
+        )
+
+        self.a2 = nn.ReLU()
+
+        self.convblock3 = nn.Sequential(
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.BatchNorm1d(16),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.BatchNorm1d(16),
+        )
+
+        self.a3 = nn.ReLU()
+        self.convblock4 = nn.Sequential(
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same'),
+            nn.BatchNorm1d(32),
+        )
+        self.skipblock4 = nn.Sequential(
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False),
+            nn.BatchNorm1d(32),
+        )
+        self.a4 = nn.ReLU()
+        self.convblock5 = nn.Sequential(
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same'),
+            nn.BatchNorm1d(32),
+        )
+        self.a5 = nn.ReLU()
+        self.pool2 = nn.AvgPool1d(kernel_size=(self.seq_length//2//2)-1)
+        self.flatten = nn.Flatten(start_dim=1)
+        self.fc = nn.Linear(32, 3)  # 3 output classes for softmax
 
     def forward(self, x):
         # Conv2D
         x.to(self.device)
-        x = x.unsqueeze(1)
-        x = self.conv2d(x)
-        x = self.leaky_relu(x)
-        # Reshape from Conv2D output to match Conv1D input
-        x = x.view(x.shape[0], 16, -1)
-        # First Conv1D
-        x = self.conv1d_1(x)
-        x = self.bn1(x)
-        x = self.leaky_relu(x)
-        # Batch Normalization + MaxPooling
-        #x = self.bn1(x)
-        x = self.maxpool1(x)
-        # Second Conv1D
-        x = self.conv1d_2(x)
-        x = self.leaky_relu(x)
-        # Batch Normalization + MaxPooling
-        x = self.bn2(x)
-        x = self.maxpool2(x)
-        # Check the shape before LSTM
-        #print("Shape before LSTM:", x.shape) # Print the shape before entering LSTM
-        # Bidirectional LSTM
-        x = x.permute(0,2,1)
-        x, _ = self.lstm(x)
-        x = x[:, -1, :]  # Last time step
-        # Dense layers
-        x = self.fc1(x)
-        x = self.leaky_relu(x)
-        x = self.fc2(x)
-        x = self.leaky_relu(x)
-        x = self.fc3(x)
-        # Softmax output
-        # x = F.softmax(x, dim=-1)
+        #print(x.shape)
+        x = self.conv1d_0(x)
+        x = self.pool1(x)
+        #print(x.shape)
+        x = self.convblock1(x) + x
+        x = self.a1(x)
+        #print(x.shape)
+        x = self.convblock2(x) + x
+        x = self.a2(x)
+        #print(x.shape)
+        x = self.convblock3(x) + x
+        x = self.a3(x)
+        #print(x.shape)
+        x = self.convblock4(x) + self.skipblock4(x)
+        x = self.a4(x)
+        #print(x.shape)
+        x = self.convblock5(x) + x
+        x = self.a5(x)
+        #print(x.shape)
+        x = self.pool2(x)
+        #print(x.shape)
+        x = self.flatten(x)
+        #print(x.shape)
+        x = self.fc(x)
         return x
