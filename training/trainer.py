@@ -148,7 +148,8 @@ class Trainer:
                 net.parameters(),
                 lr=self.lr,
                 betas=opt_cfg.betas,
-                weight_decay=opt_cfg.weight_decay
+                weight_decay=opt_cfg.weight_decay,
+                eps=opt_cfg.eps,
             )
         else:
             raise ValueError(f"Unsupported optimizer: {opt_cfg.type}")
@@ -237,7 +238,9 @@ class Trainer:
             self.train_score.append(train_f1.cpu().numpy())
             print(f"Epoch {epoch}/{self.n_epochs} — "
                   f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
-            self.val_score = self.evaluate(self.val_loader)
+            val_loss, val_score = self.evaluate(self.val_loader)
+            self.val_loss.append(val_loss)
+            self.val_score.append(val_score)
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
     def test(self):
