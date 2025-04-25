@@ -8,13 +8,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from utils.utils import print_model_info
 
 class CNNClassifier(nn.Module):
     """
     Conv2D → Reshape → Conv1D → MaxPool1D → Conv1D → MaxPool1D → BiLSTM → Dense → Dense → Output
     Input: (batch_size, 100, 40, 1)
     """
-    def __init__(self, config, input_shape, device):
+    def __init__(self, config, input_shape, device, input_size):
         super().__init__()
         # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
         # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
@@ -46,6 +47,18 @@ class CNNClassifier(nn.Module):
         self.fc1 = nn.Linear(64 * 2, 32)  # *2 because it's bidirectional
         self.fc2 = nn.Linear(32, 32)
         self.fc3 = nn.Linear(32, 3)  # 3 output classes for softmax
+
+        self.name = "CNN Model"
+        self.input_size = input_size
+        # print out the model architecture when first intializing
+        print(f'Model: {self.name}')
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        print(f"Model: {self.name}")
+        print(f"\n🧠 Total parameters: {total_params:,}")
+        print(f"🎯 Trainable parameters: {trainable_params:,}")
+        ## todo: get the summary working properly with the right input shape
+        # print_model_info(self, input_size, self.name)
 
     def forward(self, x):
         # Conv2D
@@ -83,3 +96,12 @@ class CNNClassifier(nn.Module):
         # Softmax output
         # x = F.softmax(x, dim=-1)
         return x
+
+    def set_train_model(self):
+        self.mode = "train"
+
+    def set_eval_mode(self):
+        self.mode = "eval"
+
+    def set_test_mode(self):
+        self.mode = "test"

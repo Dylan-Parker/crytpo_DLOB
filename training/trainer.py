@@ -100,9 +100,11 @@ class Trainer:
         print(f"Input Size: {self.input_size}")
 
         self.train_loss = []
-        self.val_loss = []
         self.train_score = []
+        self.val_loss = []
         self.val_score = []
+        self.test_loss = []
+        self.test_score = []
 
         # model / criterion / optimizer
         self.model = self._build_model().to(self.device)
@@ -139,7 +141,8 @@ class Trainer:
         if self.config.model.type == "mlp_basic_model":
             return BasicMLPModel(self.config, self.device, self.input_size)
         if self.config.model.type == "cnn_model":
-            return CNNClassifier(self.config, self.train_ds.features.shape, self.device)
+            # todo: consolidate passing in the input_size with using train_ds.features.shape
+            return CNNClassifier(self.config, self.train_ds.features.shape, self.device, self.input_size)
 
     def _init_criterion(self):
         # Override if you need a different loss
@@ -225,12 +228,12 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                self.train_loss_meter.update(loss.item().cpu().numpy(), x.size(0))
+                self.train_loss_meter.update(loss.item(), x.size(0))
                 preds = logits.argmax(dim=1)
                 all_preds.append(preds)
                 all_targets.append(y)
                 self.iter_meter.update(time.perf_counter() - start_time)
-                if i % int(len(self.train_loader)/10) == 0:
+                if i % int(len(self.train_loader)/1) == 0:
                     print(
                         f'Epoch[Batch]: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Avg_Loss {self.train_loss_meter.val:.3f} ({self.train_loss_meter.avg:.3f})\t',
@@ -252,14 +255,17 @@ class Trainer:
             print(f"Epoch {epoch}/{self.n_epochs} — "
                   f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
 
-            self.val_score = self.evaluate(self.val_loader, epoch)
-            self.val_loss.append(self.val_score)
+            val_loss, val_score = self.evaluate(self.val_loader)
+            self.val_loss.append(val_loss)
+            self.val_score.append(val_score)
 
-            self.val_score = self.evaluate(self.val_loader)
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
     def test(self):
-        self.evaluate(self.test_loader)
+        loss, score = self.evaluate(self.test_loader)
+        self.test_loss.append(loss)
+        self.test_score.append(score)
+        return loss, score
 
     def save_model(self, name: str = "model.pt"):
         path = os.path.join(self.output_dir, name)
