@@ -153,7 +153,7 @@ class Trainer:
         else:
             raise ValueError(f"Unsupported optimizer: {opt_cfg.type}")
 
-    def evaluate(self, data_loader, epoch): # -> metrics_dict
+    def evaluate(self, data_loader): # -> metrics_dict
         # Evaluate model on validation set
         self.model.eval()
         running_loss = 0.0
@@ -164,7 +164,7 @@ class Trainer:
         score = []
         with torch.no_grad():
             for x, y in data_loader:
-                x, y = x.to(self.device), y.to(self.device)
+                x, y = x.to(self.device), y.to(self.device).long()
                 logits = self.model.forward(x)
                 loss = self.criterion(logits, y)
                 running_loss += loss.item() * x.size(0)
@@ -204,7 +204,7 @@ class Trainer:
 
             for i, (x, y) in enumerate(self.train_loader):
                 start_time = time.perf_counter()
-                x, y = x.to(self.device), y.to(self.device)
+                x, y = x.to(self.device), y.to(self.device).long()
                 self.optimizer.zero_grad()
                 logits = self.model.forward(x)
                 loss = self.criterion(logits, y)
@@ -237,7 +237,7 @@ class Trainer:
             self.train_score.append(train_f1.cpu().numpy())
             print(f"Epoch {epoch}/{self.n_epochs} — "
                   f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
-            self.val_score = self.evaluate(self.val_loader, epoch)
+            self.val_score = self.evaluate(self.val_loader)
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
     def test(self):
