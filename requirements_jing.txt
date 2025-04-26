@@ -1,0 +1,13 @@
+torch
+matplotlib
+tqdm
+pyyaml
+scikit-learn
+pytest
+pytorch-fid
+numpy
+jupyter
+notebook
+torchinfo
+torcheval
+torchmetrics

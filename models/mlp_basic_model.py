@@ -11,9 +11,9 @@ class BasicMLPModel(BaseModel):
         self.input_size = input_size
         self.name = "Basic MLP Model"
 
-        self.in_features = config.model.in_features
+        self.sequence_length = config.sequence_length
         #self.out_features = config.model.out_features
-        self.layer1 = nn.Linear(in_features=self.in_features, out_features=3)
+        self.layer1 = nn.Linear(in_features=self.input_size*self.sequence_length, out_features=3)
         self.relu = nn.ReLU()
         #self.sigmoid = nn.Sigmoid()
 

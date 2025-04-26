@@ -10,6 +10,7 @@ from typing import Optional
 from models.mlp_basic_model import BasicMLPModel
 from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
+from models.linear_model import LinearModel
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 
@@ -96,6 +97,7 @@ class Trainer:
 
         # Flatten input shape from (B, T, F) or similar
         sample_batch = next(iter(self.test_loader))[0]
+        
         print("One batch shape:", next(iter(self.test_loader))[0].shape)
         self.input_size = (1, sample_batch.shape[1])
 
@@ -145,15 +147,35 @@ class Trainer:
     def _build_model(self):
         if self.config.model.type == "base_model":
             return BaseModel(self.config, self.device, self.input_size)
-        if self.config.model.type == "mlp_basic_model":
+        elif self.config.model.type == "mlp_basic_model":
             return BasicMLPModel(self.config, self.device, self.input_size)
-        if self.config.model.type == "cnn_model":
+        elif self.config.model.type == "cnn_model":
             # todo: consolidate passing in the input_size with using train_ds.features.shape
             return CNNClassifier(self.config, self.train_ds.features.shape, self.device, self.input_size)
+        elif self.config.model.type == "linear_model":
+            return LinearModel(self.config, self.device, self.input_size)
+        else:
+            raise ValueError(f"Unsupported model type: {self.config.model.type}")
 
     def _init_criterion(self):
-        # Override if you need a different loss
-        return nn.CrossEntropyLoss()
+        #Ridge regression
+        #if loss is not an attribute of config, then use default
+        try:
+            loss_type = self.config.loss.type.lower()
+            if loss_type == "cross_entropy":
+                return nn.CrossEntropyLoss()
+            elif loss_type == 'ridge':
+                l2_lambda = self.config.loss.l2_lambda
+                assert l2_lambda > 0, "L2 lambda must be greater than 0 for Ridge regression"
+                return nn.MSELoss() + l2_lambda * torch.sum(torch.square(self.model.parameters()))
+            ##Lasso regression
+            elif self.config.loss.type.lower() == 'lasso':
+                l1_lambda = self.config.loss.l1_lambda
+                assert l1_lambda > 0, "L1 lambda must be greater than 0 for Lasso regression"
+                return nn.MSELoss() + l1_lambda * torch.sum(torch.abs(self.model.parameters()))
+        except AttributeError:
+            print("Warning: Loss not specified in config, using default CrossEntropyLoss")
+            return nn.CrossEntropyLoss()
 
     def _init_optimizer(self, net: nn.Module):
         opt_cfg = self.config.optimizer
