@@ -239,6 +239,10 @@ def run_parameter_sweep(
                                                    save_model=save_trial_models,
                                                    verbose=True)
 
+        if final_results is None:
+            print(f"⚠️ Trial {trial_name} failed. Skipping this trial.")
+            continue
+
         # Store results
         trial_summary = {sweep_param_name: value}
         # Extract metrics from validation or test based on availability

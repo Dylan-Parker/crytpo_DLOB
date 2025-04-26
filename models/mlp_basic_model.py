@@ -29,10 +29,18 @@ class BasicMLPModel(BaseModel):
     def set_test_mode(self):
         self.mode = "test"
 
+    # def forward(self, x):
+    #     # print("Calling MLP Forward")  # use for debugging
+    #     #Preserve Batch dim when passing to FC Layer
+    #     out = self.layer1(x.view(x.size(0), -1))
+    #     out = self.relu(out)
+    #     #out = self.sigmoid(out)
+    #     return out
+
     def forward(self, x):
-        # print("Calling MLP Forward")  # use for debugging
-        #Preserve Batch dim when passing to FC Layer
-        out = self.layer1(x.view(x.size(0), -1))
+        batch_size = x.size(0)
+        out = x.view(batch_size, -1)  # Flatten everything except batch
+        out = self.layer1(out)
         out = self.relu(out)
-        #out = self.sigmoid(out)
         return out
+

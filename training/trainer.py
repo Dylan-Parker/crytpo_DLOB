@@ -100,11 +100,13 @@ class Trainer:
                 pin_memory=(self.device == "cuda")
             )
 
-        # Flatten input shape from (B, T, F) or similar
-        sample_batch = next(iter(self.test_loader))[0]
-
-        print("One batch shape:", next(iter(self.test_loader))[0].shape)
-        self.input_size = (1, sample_batch.shape[1])
+        sample_batch = next(iter(self.train_loader))[0]
+        print("One batch shape:", sample_batch.shape)
+        # Default: preserve per-sample shape (works for MLP, CNN, etc.)
+        self.input_size = sample_batch.shape
+        # MLPM will flatten to config.model.in_features, so ensure it matches
+        if self.config.model.type == "mlp_basic_model":
+            self.input_size = (1, self.config.model.in_features)
 
         print(f"\nDatasets and DataLoaders created.")
         print(f"Number of training batches: {len(self.train_loader)}")
@@ -135,17 +137,15 @@ class Trainer:
         )
     @staticmethod
     def _get_device():
-        # if you want to default to cuda first change order.
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            device = torch.device("mps")
             print("Using MPS.")
+            return "mps"
         elif torch.cuda.is_available():
-            device = torch.device("cuda")
             print(f"Using CUDA (gpu: {torch.cuda.get_device_name(0)}).")
+            return "cuda"
         else:
-            device = torch.device("cpu")
             print("Using CPU")
-        return device
+            return "cpu"
 
     @staticmethod
     def _set_seed(seed: int):
@@ -163,8 +163,13 @@ class Trainer:
         elif self.config.model.type == "mlp_basic_model":
             return BasicMLPModel(self.config, self.device, self.input_size)
         elif self.config.model.type == "cnn_model":
-            # todo: consolidate passing in the input_size with using train_ds.features.shape
-            return CNNClassifier(self.config, self.train_ds.features.shape, self.device, self.input_size)
+            batch_size, num_features, _ = self.input_size
+            seq_len = self.train_ds.seq_len
+            # Build a dummy input_shape tuple same form as old features.shape=(N_windows, T, F)
+            # use len(self.train_ds) for N_windows so that idx-based logic in CNN still works
+            input_shape = (len(self.train_ds), seq_len, num_features)
+            return CNNClassifier(self.config, input_shape, self.device, self.input_size)
+
         elif self.config.model.type == "linear_model":
             return LinearModel(self.config, self.device, self.input_size)
         else:

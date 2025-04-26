@@ -75,3 +75,70 @@ class LOBSequenceDataset(Dataset):
             # at least on mps, f1 score requires conversion to long / int64
 
         return x_tensor, y_tensor
+
+
+# ------------------------------------------------------------------------
+# Memory-efficient sliding-window Dataset for LOB data
+class LOBLazySequenceDataset(torch.utils.data.Dataset):
+    """
+    A memory‑efficient Dataset that generates sliding‑window sequences on‑the‑fly.
+
+    Parameters
+    ----------
+    features : np.ndarray
+        Raw feature matrix of shape (N, F).
+    labels : np.ndarray
+        Label vector of shape (N,).
+    seq_len : int
+        Length T of each sliding window.
+    stride : int, default 1
+        Step size between consecutive windows.  stride=1 ⇒ fully overlapping windows.
+    device : torch.device or None
+        If given, tensors are moved to this device during __getitem__.
+    """
+
+    def __init__(
+        self,
+        features: np.ndarray,
+        labels:   np.ndarray,
+        seq_len:  int,
+        stride:   int = 1,
+        device:   torch.device | None = None,
+    ):
+        assert features.ndim == 2, "features must have shape (N, F)"
+        assert len(features) == len(labels), "features and labels length mismatch"
+        assert seq_len > 0, "seq_len must be positive"
+        assert stride > 0, "stride must be positive"
+        assert len(features) >= seq_len + 1, "Need at least seq_len+1 rows"
+
+        self.x = features.astype(np.float32, copy=False)   # ensure fp32 but avoid copy if already
+        self.y = labels.astype(np.int64,   copy=False)     # int64 for CE/F1
+        self.seq_len = seq_len
+        self.stride  = stride
+        self.device  = device
+
+        # pre‑compute length to avoid recalculation
+        self._n_samples = (len(self.x) - seq_len) // stride + 1
+
+    def __len__(self):
+        return self._n_samples
+
+    def __getitem__(self, idx: int):
+        if idx < 0 or idx >= self._n_samples:
+            raise IndexError(f"Index {idx} out of bounds for dataset of length {self._n_samples}")
+
+        start = idx * self.stride
+        end   = start + self.seq_len
+
+        x_win = torch.as_tensor(self.x[start:end], dtype=torch.float32)
+        # (T, F) -> (F, T) for Conv1d channel‑first
+        x_win = x_win.permute(1, 0)
+
+        # label corresponds to the *last* element of the window
+        y_lab = torch.as_tensor(self.y[end - 1], dtype=torch.long)
+
+        if self.device is not None:
+            x_win = x_win.to(self.device)
+            y_lab = y_lab.to(self.device)
+
+        return x_win, y_lab
