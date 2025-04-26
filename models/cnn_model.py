@@ -24,56 +24,74 @@ class CNNClassifier(nn.Module):
         #self.hidden_size=config.model.hidden_size
         self.seq_length = input_shape[1]
         self.num_features = input_shape[2]
+        self.dilation = int(np.log2((self.seq_length-1) / (2* (4-1)) +1))
+        total_pad = self.dilation * (4 - 1)  # e.g. 3
+        pad_left = total_pad // 2  # 1
+        pad_right = total_pad - pad_left  # 2
         # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
-        self.conv1d_0 = nn.Conv1d(in_channels=self.num_features, out_channels=16, kernel_size=4, padding='same', bias=False)
-        self.pool1 = nn.MaxPool1d(2)
+        self.convblock0 = nn.Sequential(
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=self.num_features, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
+            nn.MaxPool1d(2)
+        )
 
         self.convblock1 = nn.Sequential(
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
         )
 
         self.a1 = nn.ReLU()
 
         self.convblock2 = nn.Sequential(
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
         )
 
         self.a2 = nn.ReLU()
 
         self.convblock3 = nn.Sequential(
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(16),
         )
 
         self.a3 = nn.ReLU()
         self.convblock4 = nn.Sequential(
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False, padding=0),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(32),
         )
         self.skipblock4 = nn.Sequential(
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False, padding=0),
             nn.BatchNorm1d(32),
         )
         self.a4 = nn.ReLU()
         self.convblock5 = nn.Sequential(
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
+            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(32),
         )
         self.a5 = nn.ReLU()
@@ -94,11 +112,8 @@ class CNNClassifier(nn.Module):
         # print_model_info(self, input_size, self.name)
 
     def forward(self, x):
-        # Conv2D
-        x.to(self.device)
         #print(x.shape)
-        x = self.conv1d_0(x)
-        x = self.pool1(x)
+        x = self.convblock0(x)
         #print(x.shape)
         x = self.convblock1(x) + x
         x = self.a1(x)

@@ -11,6 +11,7 @@ from models.mlp_basic_model import BasicMLPModel
 from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
 from torcheval.metrics.functional import multiclass_f1_score
+from torch.cuda.amp import autocast, GradScaler
 
 class Config:
     def __init__(self, config_dict):
@@ -48,6 +49,8 @@ class Trainer:
             device: Optional[torch.device] = None,
             output_dir: Optional[str] = None
     ):
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
         self.device = device or self._get_device()
         self.output_dir = output_dir
         self.config = config
@@ -63,6 +66,10 @@ class Trainer:
         self.train_loss_meter = AverageMeter()
         self.train_score_meter = AverageMeter()
         self.iter_meter = AverageMeter()
+
+        self.use_amp = (self.device.type == "cuda")
+        self.scaler = GradScaler() if self.use_amp else None
+
         # data loaders
         self.train_loader = DataLoader(
             self.train_ds,
@@ -178,9 +185,10 @@ class Trainer:
         score = []
         with torch.no_grad():
             for x, y in data_loader:
-                x, y = x.to(self.device), y.to(self.device).long()
-                logits = self.model.forward(x)
-                loss = self.criterion(logits, y)
+                x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True).long()
+                with autocast(enabled=self.use_amp):
+                    logits = self.model(x)
+                    loss = self.criterion(logits, y)
                 running_loss += loss.item() * x.size(0)
                 total += x.size(0)
 
@@ -221,19 +229,29 @@ class Trainer:
         #
             for i, (x, y) in enumerate(self.train_loader):
                 start_time = time.perf_counter()
-                x, y = x.to(self.device), y.to(self.device).long()
+                x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True).long()
                 self.optimizer.zero_grad()
-                logits = self.model.forward(x)
-                loss = self.criterion(logits, y)
-                loss.backward()
-                self.optimizer.step()
+                if self.use_amp:
+                    # CUDA AMP branch
+                    with autocast():
+                        logits = self.model(x)
+                        loss = self.criterion(logits, y)
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    # plain float32 branch
+                    logits = self.model(x)
+                    loss = self.criterion(logits, y)
+                    loss.backward()
+                    self.optimizer.step()
 
                 self.train_loss_meter.update(loss.item(), x.size(0))
                 preds = logits.argmax(dim=1)
                 all_preds.append(preds)
                 all_targets.append(y)
                 self.iter_meter.update(time.perf_counter() - start_time)
-                if i % int(len(self.train_loader)/1) == 0:
+                if i % int(len(self.train_loader)/10) == 0:
                     print(
                         f'Epoch[Batch]: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Avg_Loss {self.train_loss_meter.val:.3f} ({self.train_loss_meter.avg:.3f})\t',
