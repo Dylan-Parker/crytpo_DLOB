@@ -32,7 +32,7 @@ class CNNClassifier(nn.Module):
             nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
         )
 
@@ -42,7 +42,7 @@ class CNNClassifier(nn.Module):
             nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
         )
 
@@ -52,7 +52,7 @@ class CNNClassifier(nn.Module):
             nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same'),
+            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(16),
         )
 
@@ -61,7 +61,7 @@ class CNNClassifier(nn.Module):
             nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same'),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(32),
         )
         self.skipblock4 = nn.Sequential(
@@ -73,7 +73,7 @@ class CNNClassifier(nn.Module):
             nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same'),
+            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding='same', bias=False),
             nn.BatchNorm1d(32),
         )
         self.a5 = nn.ReLU()
