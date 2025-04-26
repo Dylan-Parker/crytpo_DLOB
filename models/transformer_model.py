@@ -1,6 +1,8 @@
 
 # models/transformer_model.py
-class TransformerModel(BaseModel): # TLOB-style [cite: 99]
+from models.base_model import BaseModel
+from utils.utils import print_model_info
+class TLOB(BaseModel): # TLOB-style [cite: 99]
     def __init__(self, config):
         super().__init__(config)
         # Define Transformer blocks with dual attention (temporal & spatial) [cite: 143, 231, 232]
