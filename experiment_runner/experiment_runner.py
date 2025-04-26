@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Any, Dict, List, Tuple, Optional
 import numpy as np
+from numpy import ndarray, dtype
+
 # Assuming utils and other modules are importable
 from experiment_runner.experiment_utils import (
     create_unique_dir, create_dir, save_config, save_plot,
@@ -15,26 +17,7 @@ from training.trainer import Trainer, Config # Assuming Config class is used
 # Import base model and specific model wrappers as needed
 # from models.base_model import BaseModelWrapper # If needed directly
 
-def _get_model_class(model_type: str):
-    if model_type == 'base_model':
-        from models.base_model import BaseModel
-        return BaseModel
-    elif model_type == 'basic_mlp_model':
-        from models.mlp_basic_model import BasicMLPModel
-        return BasicMLPModel
-    elif model_type == 'cnn':
-         from models.cnn_model import CNNModel # Adjust class name if needed
-         return CNNModel
-    elif model_type == 'linear':
-         from models.linear_model import LinearModel # Adjust class name if needed
-         return LinearModel
-    elif model_type == 'tlob':
-        from models.transformer_model import TLOB
-        return TLOB
-    # Add TLOB etc.
-    else:
-         raise ImportError(f"Could not find or import model wrapper for {model_type}")
-
+import torch
 
 def run_single_trial(
     trial_config: Config,  # Use Config object or dict
@@ -47,7 +30,7 @@ def run_single_trial(
     plot_history: bool = True,
     save_model: bool = False,
     verbose : bool = True,
-) -> Trainer:
+):
     """
     Runs a single training and evaluation trial.
 
@@ -73,6 +56,10 @@ def run_single_trial(
     test_dataset
     val_dataset
     """
+    trainer = None
+    training_history = None
+    final_results = None
+
     create_dir(base_dir, trial_name)
     trial_dir = os.path.join(base_dir, trial_name)
 
@@ -95,6 +82,8 @@ def run_single_trial(
         )
     except Exception as e:
         print(f"Error instantiating Trainer: {e}")
+        return trainer, training_history, final_results
+
 
     # 3. Run Training
     try:
@@ -102,7 +91,7 @@ def run_single_trial(
         print("Training complete.")
     except Exception as e:
         print(f"Error during training: {e}")
-        return trainer
+        return trainer, training_history, final_results
 
     # 4. Evaluate on Validation and Test sets
     try:
@@ -114,34 +103,25 @@ def run_single_trial(
             print("No test dataset provided, skipping test evaluation.")
     except Exception as e:
         print(f"Error during Test Evaluation: {e}")
-        return trainer
+        return trainer, training_history, final_results
 
     # 5. Log Results
     # Combine metrics for saving
     try:
         training_history = {
             "epochs": np.linspace(1,trainer.n_epochs, trainer.n_epochs),
-            "train_losses": trainer.train_loss,
-            "train_scores": trainer.train_score,
-            "validation_losses": trainer.val_loss,
-            "validation_scores": trainer.val_score
+            "train_loss": trainer.train_loss,
+            "train_score": trainer.train_score,
+            "val_loss": trainer.val_loss,
+            "val_score": trainer.val_score
         }
-        # final_results = {
-        #     "epochs": trainer.n_epochs,
-        #     "train_loss": trainer.train_loss[-1],
-        #     "train_score": trainer.train_score[-1],
-        #     "validation_loss": trainer.val_loss[-1],
-        #     "validation_score": trainer.val_score[-1],
-        #     "test_loss": trainer.test_loss[-1],
-        #     "test_score": trainer.test_score[-1]
-        # }
 
         final_results = {
             "epochs": trainer.n_epochs,
             "train_loss": float(trainer.train_loss[-1]),
             "train_score": float(trainer.train_score[-1]),  # <-- .item() / float()
-            "validation_loss": float(trainer.val_loss[-1]),
-            "validation_score": float(trainer.val_score[-1]),
+            "val_loss": float(trainer.val_loss[-1]),
+            "val_score": float(trainer.val_score[-1]),
             "test_loss": float(trainer.test_loss[-1]),
             "test_score": float(trainer.test_score[-1]),
         }
@@ -149,17 +129,17 @@ def run_single_trial(
         df_training_history = pd.DataFrame(training_history)
         df_final_results = pd.DataFrame([final_results])
         save_df(df_training_history, trial_dir, filetype='csv', filename="training_history.csv")
-        save_df(df_final_results, trial_dir, filetype='csv', filename="final_results.csv", index=True)
+        save_df(df_final_results, trial_dir, filetype='csv', filename="final_results.csv")
 
     except Exception as e:
         print(f"Error saving metrics to {trial_dir}: {e}")
-        return trainer
+        return trainer, training_history, final_results
 
     # Plot and save learning curves from history
     try:
          fig_loss, ax_loss = plt.subplots( figsize=(15, 5))
-         ax_loss.plot(df_training_history['epochs'], df_training_history['train_losses'], label='Train Loss')
-         ax_loss.plot(df_training_history['epochs'], df_training_history['validation_losses'], label='Validation Loss')
+         ax_loss.plot(df_training_history['epochs'], df_training_history['train_loss'], label='Train Loss')
+         ax_loss.plot(df_training_history['epochs'], df_training_history['val_loss'], label='Validation Loss')
          ax_loss.axhline(df_final_results['test_loss'].iloc[0], color='red', linestyle='--', label='Test Loss')
          ax_loss.set_title('Loss vs Epoch')
          ax_loss.set_xlabel('Epoch')
@@ -169,8 +149,8 @@ def run_single_trial(
          fig_loss.tight_layout()
 
          fig_score, ax_score = plt.subplots(figsize=(15, 5))
-         ax_score.plot(df_training_history['epochs'], df_training_history['train_scores'], label='Train Scores')
-         ax_score.plot(df_training_history['epochs'], df_training_history['validation_scores'], label='Validation Scores')
+         ax_score.plot(df_training_history['epochs'], df_training_history['train_score'], label='Train Scores')
+         ax_score.plot(df_training_history['epochs'], df_training_history['val_score'], label='Validation Scores')
          ax_score.axhline(df_final_results['test_score'].iloc[0], color='red', linestyle='--', label='Test Score')
          ax_score.set_title(f'F1 Accuracy Score vs Epoch')
          ax_score.set_xlabel('Epoch')
@@ -183,7 +163,7 @@ def run_single_trial(
          save_plot(fig_score, trial_dir, "learning_curves_score.png")
     except Exception as e:
         print(f"Error Creating Plots: {e}")
-        return trainer
+        return trainer, training_history, final_results
 
     if plot_history:
         plt.show()
@@ -290,14 +270,13 @@ def run_parameter_sweep(
 
 def run_multiple_sweeps(
     base_config: Config,
-    model_type: str,
     sweeps_dict: Dict[str, List[Any]],
     train_dataset: Any,
     val_dataset: Any,
     test_dataset: Optional[Any],
     device: Any,
     base_experiment_dir: str,
-    metric_to_optimize: str = 'f1_macro',
+    metric_to_optimize: str = 'test_score',
     save_trial_models: bool = False
 ):
     """
@@ -327,7 +306,6 @@ def run_multiple_sweeps(
 
         summary_df, best_trial_config = run_parameter_sweep(
             base_config=base_config,
-            model_type=model_type,
             sweep_param_name=sweep_param_name,
             sweep_values=sweep_values,
             train_dataset=train_dataset,
@@ -335,7 +313,6 @@ def run_multiple_sweeps(
             test_dataset=test_dataset,
             device=device,
             sweep_dir=sweep_dir,
-            metric_to_optimize=metric_to_optimize,
             save_trial_models=save_trial_models
         )
         all_sweep_summaries[sweep_param_name] = summary_df
@@ -355,74 +332,74 @@ def run_multiple_sweeps(
     return all_sweep_summaries, best_overall_config
 
 
-# def orchestrate_experiment(
-#     experiment_name: str,
-#     model_type: str,
-#     base_config_path: str, # Path to the main YAML config
-#     sweeps_to_run: Optional[Dict[str, List[Any]]] = None, # Dict for sweeps, None for single run
-#     # Add args for data paths or data loading function if needed
-#     train_dataset: Any, # Pass datasets directly for now
-#     val_dataset: Any,
-#     test_dataset: Optional[Any],
-#     base_results_dir: str = "results",
-#     device_str: str = "auto", # "auto", "cuda", "cpu", "mps"
-#     save_models_in_sweep: bool = False, # Only save best model usually
-#     save_final_model: bool = True
-# ):
-#     """
-#     High-level function to set up and run an experiment (single run or multiple sweeps).
-#     """
-#     # 1. Setup Device
-#     if device_str == "auto":
-#          device = torch.device('mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu'))
-#     else:
-#          device = torch.device(device_str)
-#     print(f"Using device: {device}")
-#
-#     # 2. Load Base Configuration
-#     try:
-#         with open(base_config_path, 'r') as f:
-#             config_dict = yaml.safe_load(f)
-#         # Convert dict to Config object if your Trainer expects it
-#         base_config = Config(config_dict) # Assuming Config class exists
-#     except Exception as e:
-#         print(f"Error loading base configuration from {base_config_path}: {e}")
-#         return
-#
-#     # 3. Create Main Experiment Directory
-#     exp_dir = create_unique_dir(base_results_dir, experiment_name)
-#
-#     # 4. Run Experiment(s)
-#     if sweeps_to_run:
-#         print("Starting hyperparameter sweeps...")
-#         _, best_config_dict = run_multiple_sweeps(
-#             base_config=base_config,
-#             model_type=model_type,
-#             sweeps_dict=sweeps_to_run,
-#             train_dataset=train_dataset,
-#             val_dataset=val_dataset,
-#             test_dataset=test_dataset,
-#             device=device,
-#             base_experiment_dir=exp_dir,
-#             metric_to_optimize=base_config.training.get('early_stopping_metric', 'f1_macro'),
-#             save_trial_models=save_models_in_sweep
-#         )
-#         # Optionally run the best config found
-#         # print("\nRunning best configuration found during sweep...")
-#         # best_config = Config(best_config_dict) # Convert back if needed
-#         # run_single_trial(...) # Call with best_config and save in a 'best_trial' subdir
-#
-#     else:
-#         print("Starting single experiment run...")
-#         run_single_trial(
-#             trial_config=base_config,
-#             model_type=model_type,
-#             train_dataset=train_dataset,
-#             val_dataset=val_dataset,
-#             test_dataset=test_dataset,
-#             device=device,
-#             trial_dir=exp_dir, # Use main exp dir for single run
-#             save_model=save_final_model
-#         )
-#
-#     print(f"Experiment '{experiment_name}' finished. Results in: {exp_dir}")
+def orchestrate_experiment(
+    experiment_name: str,
+    train_dataset: Any,  # Pass datasets directly for now
+    val_dataset: Any,
+    test_dataset: Optional[Any],
+    base_config,
+    sweeps_to_run: Optional[Dict[str, List[Any]]] = None, # Dict for sweeps, None for single run
+    # Add args for data paths or data loading function if needed
+    base_results_dir: str = "results",
+    device_str: str = "auto", # "auto", "cuda", "cpu", "mps"
+    save_models_in_sweep: bool = False, # Only save best model usually
+    save_final_model: bool = True
+):
+    """
+    High-level function to set up and run an experiment (single run or multiple sweeps).
+    """
+    # 1. Setup Device
+    if device_str == "auto":
+         device = torch.device('mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu'))
+    else:
+         device = torch.device(device_str)
+    print(f"Using device: {device}")
+
+    # 3. Create Main Experiment Directory
+    exp_dir = create_unique_dir(base_results_dir, experiment_name)
+
+    # 4. Run Experiment(s)
+    if sweeps_to_run:
+        print("Starting hyperparameter sweeps...")
+        _, best_config_dict = run_multiple_sweeps(
+            base_config=base_config,
+            sweeps_dict=sweeps_to_run,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+            device=device,
+            base_experiment_dir=exp_dir,
+            metric_to_optimize='test_score',
+            save_trial_models=save_models_in_sweep
+        )
+        # Optionally run the best config found
+        # print("\nRunning best configuration found during sweep...")
+        # best_config = Config(best_config_dict) # Convert back if needed
+        # run_single_trial(...) # Call with best_config and save in a 'best_trial' subdir
+
+    else:
+        print("Starting single experiment run...")
+        # 1. Run the trial and capture results
+        trainer, training_history, final_results = run_single_trial(
+            trial_config=base_config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+            device=device,
+            base_dir=exp_dir,
+            trial_name=experiment_name,
+            save_model=save_final_model,
+            verbose=True
+        )
+
+        # 2. If you got back real history & results, persist them
+        if training_history is not None and final_results is not None:
+            df_training_history = pd.DataFrame(training_history)
+            df_final_results = pd.DataFrame([final_results])
+            save_df(df_training_history, exp_dir,
+                    filetype='csv', filename="training_history.csv")
+            save_df(df_final_results, exp_dir,
+                    filetype='csv', filename="final_results.csv")
+            print("Final Results:", final_results)
+
+    print(f"Experiment '{experiment_name}' finished. Results in: {exp_dir}")

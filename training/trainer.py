@@ -54,7 +54,9 @@ class Trainer:
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
         self.device = device or self._get_device()
-        self.output_path = config.output_path
+        # Store the provided output directory and fall back to config if not set
+        self.output_dir = output_dir
+        self.output_path = output_dir if output_dir is not None else config.output_path
         self.config = config
         self.batch_size = config.train.batch_size
         self.num_workers = config.train.num_workers
@@ -100,7 +102,7 @@ class Trainer:
 
         # Flatten input shape from (B, T, F) or similar
         sample_batch = next(iter(self.test_loader))[0]
-        
+
         print("One batch shape:", next(iter(self.test_loader))[0].shape)
         self.input_size = (1, sample_batch.shape[1])
 
@@ -338,7 +340,7 @@ class Trainer:
         return loss, score
 
     def save_model(self, name: str = "model.pt"):
-        path = os.path.join(self.output_dir, name)
+        path = os.path.join(self.output_path, name)
         torch.save(self.model.state_dict(), path)
         print(f"Model saved to {path}")
 
