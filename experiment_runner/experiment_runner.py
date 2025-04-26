@@ -8,7 +8,7 @@ import numpy as np
 # Assuming utils and other modules are importable
 from experiment_runner.experiment_utils import (
     create_unique_dir, create_dir, save_config, save_plot,
-    save_df, save_dataframe, set_nested_attr,
+    save_df, set_nested_attr,
     get_nested_attr, plot_sweep_results
 )
 from training.trainer import Trainer, Config # Assuming Config class is used
@@ -126,15 +126,26 @@ def run_single_trial(
             "validation_losses": trainer.val_loss,
             "validation_scores": trainer.val_score
         }
+        # final_results = {
+        #     "epochs": trainer.n_epochs,
+        #     "train_loss": trainer.train_loss[-1],
+        #     "train_score": trainer.train_score[-1],
+        #     "validation_loss": trainer.val_loss[-1],
+        #     "validation_score": trainer.val_score[-1],
+        #     "test_loss": trainer.test_loss[-1],
+        #     "test_score": trainer.test_score[-1]
+        # }
+
         final_results = {
             "epochs": trainer.n_epochs,
-            "train_loss": trainer.train_loss[-1],
-            "train_scor": trainer.train_score[-1],
-            "validation_loss": trainer.val_loss[-1],
-            "validation_scor": trainer.val_score[-1],
-            "test_loss": trainer.test_loss[-1],
-            "test_score": trainer.test_score[-1]
+            "train_loss": float(trainer.train_loss[-1]),
+            "train_score": float(trainer.train_score[-1]),  # <-- .item() / float()
+            "validation_loss": float(trainer.val_loss[-1]),
+            "validation_score": float(trainer.val_score[-1]),
+            "test_loss": float(trainer.test_loss[-1]),
+            "test_score": float(trainer.test_score[-1]),
         }
+
         df_training_history = pd.DataFrame(training_history)
         df_final_results = pd.DataFrame([final_results])
         save_df(df_training_history, trial_dir, filetype='csv', filename="training_history.csv")
@@ -189,9 +200,9 @@ def run_single_trial(
 
 
 def run_parameter_sweep(
-    base_config: Config,
-    sweep_param_name: str,
-    sweep_values: List[Any],
+    base_config,
+    sweep_param_name,
+    sweep_values,
     train_dataset: Any,
     val_dataset: Any,
     test_dataset: Optional[Any],
@@ -232,7 +243,8 @@ def run_parameter_sweep(
             continue
 
         # Create a subdirectory for this trial within the sweep directory
-        trial_name = f"trial_{i:03d}_{sweep_param_name.split('.')[-1]}_{value}"
+        trial_name = f"trial_{i:02d}_{sweep_param_name.split('.')[-1]}_{value}"
+        # trial_name = f"{sweep_param_name}_{value}"
         # trial_dir = os.path.join(sweep_dir, trial_name)
         # os.makedirs(trial_dir, exist_ok=True)
 
@@ -244,6 +256,7 @@ def run_parameter_sweep(
                                                    device=device,
                                                    base_dir=sweep_dir,
                                                    trial_name=trial_name,
+                                                   save_model=save_trial_models,
                                                    verbose=True)
 
         # Store results
@@ -260,15 +273,17 @@ def run_parameter_sweep(
 
     # Aggregate results
     results_df = pd.DataFrame(results_list)
-    save_df(results_df, sweep_dir, "sweep_summary.csv")
+    save_df(results_df, sweep_dir, filetype='csv', filename="sweep_summary.csv")
 
     # # Plot results
-    # metrics_to_plot = [m for m in [ metric_to_optimize, 'accuracy', 'f1_macro', 'precision_macro', 'recall_macro'] if m in results_df.columns]
-    # plot_sweep_results(results_df, sweep_param_name, metrics_to_plot, sweep_dir)
+    metrics_to_plot = [m for m in ['train_loss', 'train_score',
+                                   'val_loss', 'val_score',
+                                   'test_loss', 'test_score',] if m in results_df.columns]
+    plot_sweep_results(results_df, sweep_param_name, metrics_to_plot, sweep_dir)
     #
-    # print(f"===== Sweep Complete for: {sweep_param_name} =====")
-    # print(f"Best Score ({metric_to_optimize}): {best_score}")
-    # # print(f"Best Config Params: {best_config_dict}") # Potentially very long
+    print(f"===== Sweep Complete for: {sweep_param_name} =====")
+    print(f"Best Score (Test F1 Score): {best_score}")
+    print(f"Best Config Params: {best_config_dict}")  # Potentially very long
 
     return results_df, best_config_dict
 
