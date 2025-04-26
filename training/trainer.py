@@ -11,6 +11,7 @@ from models.mlp_basic_model import BasicMLPModel
 from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
 from models.linear_model import LinearModel
+from models.mlplob_model import MLPLOB
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -172,6 +173,8 @@ class Trainer:
 
         elif self.config.model.type == "linear_model":
             return LinearModel(self.config, self.device, self.input_size)
+        elif self.config.model.type == "mlplob_model":
+            return MLPLOB(self.config, self.device, self.input_size)
         else:
             raise ValueError(f"Unsupported model type: {self.config.model.type}")
 
