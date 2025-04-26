@@ -9,6 +9,7 @@ class LinearModel(BaseModel):
         super().__init__(config, device, input_size)
         # Define linear layers as the numner of features x time steps so the model can see still sequence of features for fair comparison
         self.mode = "train"
+        self.name = "Basic Linear Model"
         self.device = device
         self.input_size = input_size[1]
         self.sequence_length = config.sequence_length
