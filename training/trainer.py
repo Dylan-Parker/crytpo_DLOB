@@ -322,7 +322,7 @@ class Trainer:
             if val_loss < best_val - self.early_stop_threshold:
                 best_val = val_loss
                 wait = 0
-                path = os.path.join(self.output_path, self.output_name, "best_model.pt")
+                path = os.path.join(self.output_path, self.output_name + "_best_model.pt")
                 torch.save(self.model.state_dict(), path)
                 print(f"  ↳ New best model (val_loss={val_loss:.4f}), checkpoint saved.")
             else:
