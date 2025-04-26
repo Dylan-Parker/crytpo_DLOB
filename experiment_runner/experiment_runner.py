@@ -185,12 +185,11 @@ def run_single_trial(
         trainer.save_model(name="final_model.pt") # Assuming Trainer has save_model method
         print(f"Model saved in {trial_dir}")
 
-    return trainer
+    return trainer, training_history, final_results
 
 
 def run_parameter_sweep(
     base_config: Config,
-    model_type: str,
     sweep_param_name: str,
     sweep_values: List[Any],
     train_dataset: Any,
@@ -198,15 +197,14 @@ def run_parameter_sweep(
     test_dataset: Optional[Any],
     device: Any,
     sweep_dir: str,
-    metric_to_optimize: str = 'f1_macro', # Default metric to track for best
-    save_trial_models: bool = False
+    save_trial_models: bool = False,
+    verbose=True,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Runs multiple trials by sweeping over a single hyperparameter.
 
     Args:
         base_config (Config): The base configuration object.
-        model_type (str): Type of model ('cnn', 'tlob', 'linear').
         sweep_param_name (str): Dot-separated name of the parameter to sweep (e.g., 'train.learning_rate').
         sweep_values (List[Any]): List of values to try for the sweep parameter.
         train_dataset, val_dataset, test_dataset: Datasets.
@@ -235,49 +233,42 @@ def run_parameter_sweep(
 
         # Create a subdirectory for this trial within the sweep directory
         trial_name = f"trial_{i:03d}_{sweep_param_name.split('.')[-1]}_{value}"
-        trial_dir = os.path.join(sweep_dir, trial_name)
-        os.makedirs(trial_dir, exist_ok=True)
+        # trial_dir = os.path.join(sweep_dir, trial_name)
+        # os.makedirs(trial_dir, exist_ok=True)
 
         # Run the trial
-        trial_metrics = run_single_trial(
-            trial_config=trial_config,
-            model_type=model_type,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            test_dataset=test_dataset,
-            device=device,
-            trial_dir=trial_dir,
-            save_model=save_trial_models
-        )
+        trainer, training_history, final_results = run_single_trial(trial_config=trial_config,
+                                                   train_dataset=train_dataset,
+                                                   val_dataset=val_dataset,
+                                                   test_dataset=test_dataset,
+                                                   device=device,
+                                                   base_dir=sweep_dir,
+                                                   trial_name=trial_name,
+                                                   verbose=True)
 
         # Store results
         trial_summary = {sweep_param_name: value}
         # Extract metrics from validation or test based on availability
-        metrics_source = trial_metrics.get('test', trial_metrics.get('validation', {}))
-        if isinstance(metrics_source, dict):
-             trial_summary.update(metrics_source) # Add all metrics from the chosen source
-        else: # Handle potential error strings
-             trial_summary['error'] = str(metrics_source)
-
+        trial_summary.update(final_results) # Add all metrics from the chosen source
         results_list.append(trial_summary)
 
         # Track best score (using validation metric if test not available or errored)
-        current_score = metrics_source.get(metric_to_optimize, -float('inf'))
-        if isinstance(current_score, (int, float)) and current_score > best_score:
+        current_score = final_results['test_score']
+        if current_score > best_score:
             best_score = current_score
-            best_config_dict = copy.deepcopy(vars(trial_config)) # Store the best config dict
+            best_config_dict = copy.deepcopy(vars(trial_config))  # Store the best config dict
 
     # Aggregate results
     results_df = pd.DataFrame(results_list)
-    save_dataframe(results_df, sweep_dir, "sweep_summary.csv")
+    save_df(results_df, sweep_dir, "sweep_summary.csv")
 
-    # Plot results
-    metrics_to_plot = [m for m in [metric_to_optimize, 'accuracy', 'f1_macro', 'precision_macro', 'recall_macro'] if m in results_df.columns]
-    plot_sweep_results(results_df, sweep_param_name, metrics_to_plot, sweep_dir)
-
-    print(f"===== Sweep Complete for: {sweep_param_name} =====")
-    print(f"Best Score ({metric_to_optimize}): {best_score}")
-    # print(f"Best Config Params: {best_config_dict}") # Potentially very long
+    # # Plot results
+    # metrics_to_plot = [m for m in [ metric_to_optimize, 'accuracy', 'f1_macro', 'precision_macro', 'recall_macro'] if m in results_df.columns]
+    # plot_sweep_results(results_df, sweep_param_name, metrics_to_plot, sweep_dir)
+    #
+    # print(f"===== Sweep Complete for: {sweep_param_name} =====")
+    # print(f"Best Score ({metric_to_optimize}): {best_score}")
+    # # print(f"Best Config Params: {best_config_dict}") # Potentially very long
 
     return results_df, best_config_dict
 

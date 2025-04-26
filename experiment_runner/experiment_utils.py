@@ -114,22 +114,6 @@ def save_df(df, dir_path: str, filetype: str='csv', filename: str = "metrics.csv
     except Exception as e:
         print(f"Error saving Dataframe to {filepath}: {e}")
 
-def save_dataframe(df: pd.DataFrame, dir_path: str, filename: str):
-    """
-    Saves a pandas DataFrame to a CSV file.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to save.
-        dir_path (str): The directory to save the CSV in.
-        filename (str): The name for the CSV file (e.g., 'results_summary.csv').
-    """
-    filepath = os.path.join(dir_path, filename)
-    try:
-        df.to_csv(filepath, index=False)
-        print(f"DataFrame saved to {filepath}")
-    except Exception as e:
-        print(f"Error saving DataFrame to {filepath}: {e}")
-
 def set_nested_attr(config_obj: Any, attr_string: str, value: Any):
     """
     Sets a potentially nested attribute in a config object (dict or class instance).
