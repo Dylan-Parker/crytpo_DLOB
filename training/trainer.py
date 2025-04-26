@@ -326,7 +326,11 @@ class Trainer:
             val_loss, val_score = self.evaluate(self.val_loader)
             self.val_loss.append(val_loss)
             self.val_score.append(val_score)
+            lr = self.scheduler.get_last_lr()
             self.scheduler.step(val_loss)
+            new_lr = self.scheduler.get_last_lr()
+            if lr > new_lr:
+                print(f"Scheduler updated learning rate from: {lr} to {new_lr}")
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
             if val_loss < best_val - self.early_stop_threshold:
