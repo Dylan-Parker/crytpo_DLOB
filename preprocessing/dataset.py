@@ -44,7 +44,7 @@ class LOBSequenceDataset(Dataset):
     PyTorch Dataset for LOB sequences.
     Handles conversion to tensor and permutation for Conv1D.
     """
-    def __init__(self, features_seq: np.ndarray, labels_seq: np.ndarray, device=None):
+    def __init__(self, features_seq: np.ndarray, labels_seq: np.ndarray, device=torch.device("cpu")):
         """
         Args:
             features_seq (np.ndarray): Sequences of features (num_sequences, seq_len, num_features).

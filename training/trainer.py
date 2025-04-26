@@ -13,6 +13,7 @@ from models.base_model import BaseModel
 from models.linear_model import LinearModel
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 class Config:
     def __init__(self, config_dict):
@@ -53,7 +54,7 @@ class Trainer:
         torch.backends.cudnn.deterministic = False
         torch.backends.cudnn.benchmark = True
         self.device = device or self._get_device()
-        self.output_dir = output_dir
+        self.output_path = config.output_path
         self.config = config
         self.batch_size = config.train.batch_size
         self.num_workers = config.train.num_workers
@@ -67,10 +68,12 @@ class Trainer:
         self.train_loss_meter = AverageMeter()
         self.train_score_meter = AverageMeter()
         self.iter_meter = AverageMeter()
-
-        self.use_amp = (self.device.type == "cuda")
+        self.early_stop_patience = self.config.train.early_stop_patience
+        self.early_stop_threshold = self.config.train.early_stop_threshold
+        #self.use_amp = (self.device.type == "cuda")
+        self.use_amp = False
         self.scaler = GradScaler() if self.use_amp else None
-
+        self.output_name = self.config.output_name
         # data loaders
         self.train_loader = DataLoader(
             self.train_ds,
@@ -119,7 +122,15 @@ class Trainer:
         self.model = self._build_model().to(self.device)
         self.criterion = self._init_criterion()
         self.optimizer = self._init_optimizer(self.model)
-
+        self.scheduler = ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=self.config.scheduler.factor,
+            patience=self.config.scheduler.patience,
+            threshold=self.config.scheduler.threshold,
+            min_lr= 1e-6,
+            verbose=True,
+        )
     @staticmethod
     def _get_device():
         # if you want to default to cuda first change order.
@@ -191,7 +202,8 @@ class Trainer:
                 net.parameters(),
                 lr=self.lr,
                 betas=opt_cfg.betas,
-                weight_decay=opt_cfg.weight_decay
+                weight_decay=opt_cfg.weight_decay,
+                eps=opt_cfg.eps
             )
         else:
             raise ValueError(f"Unsupported optimizer: {opt_cfg.type}")
@@ -208,6 +220,11 @@ class Trainer:
         with torch.no_grad():
             for x, y in data_loader:
                 x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True).long()
+
+                # quick data check
+                assert torch.isfinite(x).all(), "NaN/Inf in inputs!"
+                assert torch.isfinite(y).all(), "NaN/Inf in labels!"
+
                 with autocast(enabled=self.use_amp):
                     logits = self.model(x)
                     loss = self.criterion(logits, y)
@@ -239,7 +256,8 @@ class Trainer:
         self.val_score = []
         self.train_loss_meter.reset()
         self.train_score_meter.reset()
-
+        wait = 0
+        best_val = float('inf')
         print("Starting Training")
         print(f"Epochs: {self.n_epochs} | Num Batches: {len(self.train_loader)}")
 
@@ -298,9 +316,21 @@ class Trainer:
             val_loss, val_score = self.evaluate(self.val_loader)
             self.val_loss.append(val_loss)
             self.val_score.append(val_score)
-
+            self.scheduler.step(val_loss)
             t2 = time.perf_counter()
             print(f"Epoch finished in {t2-t1} seconds")
+            if val_loss < best_val - self.early_stop_threshold:
+                best_val = val_loss
+                wait = 0
+                path = os.path.join(self.output_path, self.output_name, "best_model.pt")
+                torch.save(self.model.state_dict(), path)
+                print(f"  ↳ New best model (val_loss={val_loss:.4f}), checkpoint saved.")
+            else:
+                wait += 1
+                if wait >= self.early_stop_patience:
+                    print(f"Stopping early at epoch {epoch} (no improvement in { self.early_stop_patience} epochs).")
+                    break
+
     def test(self):
         loss, score = self.evaluate(self.test_loader)
         self.test_loss.append(loss)
