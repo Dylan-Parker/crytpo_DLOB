@@ -219,7 +219,7 @@ class Trainer:
         score = []
         with torch.no_grad():
             for x, y in data_loader:
-                x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True).long()
+                x, y = x.to(self.device, dtype=torch.float32, non_blocking=True), y.to(self.device, dtype=torch.long, non_blocking=True)
 
                 # quick data check
                 assert torch.isfinite(x).all(), "NaN/Inf in inputs!"
@@ -269,7 +269,7 @@ class Trainer:
         #
             for i, (x, y) in enumerate(self.train_loader):
                 start_time = time.perf_counter()
-                x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True).long()
+                x, y = x.to(self.device, dtype=torch.float32, non_blocking=True), y.to(self.device, dtype=torch.long, non_blocking=True)
                 self.optimizer.zero_grad()
                 if self.use_amp:
                     # CUDA AMP branch

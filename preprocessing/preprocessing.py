@@ -539,12 +539,10 @@ def preprocess_lob_data(config):
         if config.verbose or True:
             print(f"Saving preprocessed data to {output_path}...")
         # Consider saving format (parquet, feather, hdf5)
-        df.to_parquet(output_path, index=True)
+        df.to_parquet(os.path.join(output_path, "preprocessed_data.parquet"), index=True)
         if config.verbose or True:
             print("Save complete.")
-        return None # Indicate data was saved
-    else:
-        return df
+    return df
 
 def split_data_chronological(df, train_frac=0.7, val_frac=0.15, test_frac=0.15):
     """
