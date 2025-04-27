@@ -12,7 +12,11 @@ from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
 from models.linear_model import LinearModel
 from models.mlplob_model import MLPLOB
+<<<<<<< Updated upstream
 from models.deepLOB import DeepLOB
+=======
+from models.tlob_model import TLOB
+>>>>>>> Stashed changes
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -74,8 +78,8 @@ class Trainer:
         self.iter_meter = AverageMeter()
         self.early_stop_patience = self.config.train.early_stop_patience
         self.early_stop_threshold = self.config.train.early_stop_threshold
-        #self.use_amp = (self.device.type == "cuda")
-        self.use_amp = False
+        self.use_amp = (self.device.type == "cuda")
+        #self.use_amp = False
         self.scaler = GradScaler() if self.use_amp else None
         self.output_name = self.config.output_name
         # data loaders
@@ -177,6 +181,8 @@ class Trainer:
             return MLPLOB(self.config, self.device, self.input_size)
         elif self.config.model.type == "deepLOB_model":
             return DeepLOB(self.config, self.device, self.input_size)
+        elif self.config.model.type == "tlob_model":
+            return TLOB(self.config, self.device, self.input_size)
         else:
             raise ValueError(f"Unsupported model type: {self.config.model.type}")
 
