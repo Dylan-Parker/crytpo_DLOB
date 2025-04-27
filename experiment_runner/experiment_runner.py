@@ -115,16 +115,17 @@ def run_single_trial(
             "val_loss": trainer.val_loss,
             "val_score": trainer.val_score
         }
-
+        best_run = np.argmax(np.array(trainer.val_score, dtype=np.float32))
         final_results = {
             "epochs": trainer.n_epochs,
-            "train_loss": float(trainer.train_loss[-1]),
-            "train_score": float(trainer.train_score[-1]),  # <-- .item() / float()
-            "val_loss": float(trainer.val_loss[-1]),
-            "val_score": float(trainer.val_score[-1]),
-            "test_loss": float(trainer.test_loss[-1]),
-            "test_score": float(trainer.test_score[-1]),
+            "train_loss": float(trainer.train_loss[best_run]),
+            "train_score": float(trainer.train_score[best_run]),  # <-- .item() / float()
+            "val_loss": float(trainer.val_loss[best_run]),
+            "val_score": float(trainer.val_score[best_run]),
         }
+        if test_dataset:
+            final_results["test_loss"] = float(trainer.test_loss[best_run])
+            final_results["test_score"] = float(trainer.test_score[best_run])
 
         df_training_history = pd.DataFrame(training_history)
         df_final_results = pd.DataFrame([final_results])
@@ -250,7 +251,7 @@ def run_parameter_sweep(
         results_list.append(trial_summary)
 
         # Track best score (using validation metric if test not available or errored)
-        current_score = final_results['test_score']
+        current_score = final_results['val_score']
         if current_score > best_score:
             best_score = current_score
             best_config_dict = copy.deepcopy(vars(trial_config))  # Store the best config dict
@@ -266,7 +267,7 @@ def run_parameter_sweep(
     plot_sweep_results(results_df, sweep_param_name, metrics_to_plot, sweep_dir)
     #
     print(f"===== Sweep Complete for: {sweep_param_name} =====")
-    print(f"Best Score (Test F1 Score): {best_score}")
+    print(f"Best Score (Val F1 Score): {best_score}")
     print(f"Best Config Params: {best_config_dict}")  # Potentially very long
 
     return results_df, best_config_dict
@@ -280,7 +281,7 @@ def run_multiple_sweeps(
     test_dataset: Optional[Any],
     device: Any,
     base_experiment_dir: str,
-    metric_to_optimize: str = 'test_score',
+    metric_to_optimize: str = 'val_score',
     save_trial_models: bool = False
 ):
     """
@@ -373,7 +374,7 @@ def orchestrate_experiment(
             test_dataset=test_dataset,
             device=device,
             base_experiment_dir=exp_dir,
-            metric_to_optimize='test_score',
+            metric_to_optimize='val_score',
             save_trial_models=save_models_in_sweep
         )
         # Optionally run the best config found
@@ -407,3 +408,5 @@ def orchestrate_experiment(
             print("Final Results:", final_results)
 
     print(f"Experiment '{experiment_name}' finished. Results in: {exp_dir}")
+    if sweeps_to_run:
+        return best_config_dict
