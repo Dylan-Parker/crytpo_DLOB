@@ -95,7 +95,7 @@ class CNNClassifier(nn.Module):
             nn.BatchNorm1d(32),
         )
         self.a5 = nn.ReLU()
-        self.pool2 = nn.AvgPool1d(kernel_size=(self.seq_length//2//2)-1)
+        self.pool2 = nn.AvgPool1d(kernel_size=(self.seq_length//2//2))
         self.flatten = nn.Flatten(start_dim=1)
         self.fc = nn.Linear(32, 3)  # 3 output classes for softmax
 
