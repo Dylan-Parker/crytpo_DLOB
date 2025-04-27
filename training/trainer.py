@@ -12,11 +12,8 @@ from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
 from models.linear_model import LinearModel
 from models.mlplob_model import MLPLOB
-<<<<<<< Updated upstream
 from models.deepLOB import DeepLOB
-=======
 from models.tlob_model import TLOB
->>>>>>> Stashed changes
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
