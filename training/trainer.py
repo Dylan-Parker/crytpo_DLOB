@@ -12,6 +12,7 @@ from models.cnn_model import CNNClassifier
 from models.base_model import BaseModel
 from models.linear_model import LinearModel
 from models.mlplob_model import MLPLOB
+from models.deepLOB import DeepLOB
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -134,7 +135,6 @@ class Trainer:
             patience=self.config.scheduler.patience,
             threshold=self.config.scheduler.threshold,
             min_lr= 1e-6,
-            verbose=True,
         )
     @staticmethod
     def _get_device():
@@ -175,6 +175,8 @@ class Trainer:
             return LinearModel(self.config, self.device, self.input_size)
         elif self.config.model.type == "mlplob_model":
             return MLPLOB(self.config, self.device, self.input_size)
+        elif self.config.model.type == "deepLOB_model":
+            return DeepLOB(self.config, self.device, self.input_size)
         else:
             raise ValueError(f"Unsupported model type: {self.config.model.type}")
 
@@ -344,6 +346,26 @@ class Trainer:
                 if wait >= self.early_stop_patience:
                     print(f"Stopping early at epoch {epoch} (no improvement in { self.early_stop_patience} epochs).")
                     break
+        best_path = os.path.join(self.output_path, self.output_name + "_best_model.pt")
+        print(f"Loading best model from {best_path}")
+        state = torch.load(best_path, map_location=self.device)
+        self.model.load_state_dict(state)
+        self.model.to(self.device)
+
+        # 2) run a final test evaluation
+        if self.test_ds is not None:
+            test_loss, test_score = self.test()
+            # 3) attach it to the model
+            self.model.test_score = test_score
+            print(f"Final Test loss: {test_loss:.4f} — Test F₁: {test_score:.4f}")
+
+            # 4) save the model again (now with test_score attribute)
+            final_name = self.output_name + "_best_with_test_score.pt"
+            final_path = os.path.join(self.output_path, final_name)
+            torch.save(self.model.state_dict(), final_path)
+            print(f"Saved final model (with test_score) to {final_path}")
+        else:
+            print("No test dataset provided, skipping final test save.")
 
     def test(self):
         loss, score = self.evaluate(self.test_loader)

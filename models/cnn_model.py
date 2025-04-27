@@ -1,14 +1,12 @@
 # Reference: /notebooks/CNN Deeplearning v2 (4).ipynb
 # data processing and training available there
+"""
+This is my implementation of the architecture that is pictured in the appendix of the paper "Deep Learning for Digital Asset Limit Order Books"
+by Jha et Al. This is the architecture that the main results in that paper are attributed to.
+"""
 
-from models.base_model import BaseModel
-import os
-import pandas as pd
 import numpy as np
-import torch
-import torch.nn.functional as F
 import torch.nn as nn
-from utils.utils import print_model_info
 
 class CNNClassifier(nn.Module):
     """
