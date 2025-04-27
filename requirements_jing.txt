@@ -11,3 +11,4 @@ notebook
 torchinfo
 torcheval
 torchmetrics
+einops
