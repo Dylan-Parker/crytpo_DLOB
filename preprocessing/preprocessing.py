@@ -582,12 +582,16 @@ def normalize_features(df_train, df_val, df_test, feature_cols):
 
     df_train_scaled = df_train.copy()
     df_val_scaled = df_val.copy()
-    df_test_scaled = df_test.copy()
+
 
     # Avoid SettingWithCopyWarning
     df_train_scaled.loc[:, feature_cols] = scaler.transform(df_train[feature_cols]).astype(np.float32) # default returns float64, change to float32
     df_val_scaled.loc[:, feature_cols] = scaler.transform(df_val[feature_cols]).astype(np.float32) # default returns float64, change to float32
-    df_test_scaled.loc[:, feature_cols] = scaler.transform(df_test[feature_cols]).astype(np.float32) # default returns float64, change to float32
+    if df_test is not None:
+        df_test_scaled = df_test.copy()
+        df_test_scaled.loc[:, feature_cols] = scaler.transform(df_test[feature_cols]).astype(np.float32) # default returns float64, change to float32
+    else:
+        df_test_scaled = None
 
     print("Normalization applied.")
     return df_train_scaled, df_val_scaled, df_test_scaled, scaler
