@@ -300,91 +300,6 @@ def create_labels(df: pd.DataFrame, price_col='mid_price', method='tlob', k=20, 
 
 # --- Main Orchestration Function ---
 
-def preprocess_lob_data(config):
-    """
-    Loads, preprocesses, adds features, and labels LOB data based on config.
-    """
-    # 1. Load Data
-    df = load_deep_orderbook_dataset(
-        base_path=config.data_path or '../data/deep_orderbook/coinbase/', # Adjusted path
-        num_files=config.num_files or None,
-        precision=config.precision or np.float32,
-        verbose=config.verbose or True
-    )
-    if df is None or df.empty:
-         raise ValueError("Data loading failed or returned empty DataFrame.")
-
-    # 2. Clean Data
-    df = clean_data(
-        df,
-        strategy=config.clean_strategy or 'dropna',
-        verbose=config.verbose or True
-    )
-    if df.empty:
-        raise ValueError("DataFrame is empty after cleaning.")
-
-
-    # 3. Construct the SPECIFIC Target Price Series to use for LABELING
-    label_price_type = config.label_price_type or 'simple_midpoint'
-    label_price_levels = config.label_price_levels or 1
-    target_price_df = construct_target_prices( # This adds 'target_price' to df temporarily
-        df,
-        target_type=label_price_type,
-        num_levels=label_price_levels
-    )
-    # Make sure the target price is added to the main df or extracted correctly
-    # Let's assume construct_target_prices now returns just the series/df to merge
-    df = df.join(target_price_df) # Join based on index
-    labeling_price_column_name = 'target_price' # The column created by construct_target_prices
-
-    if labeling_price_column_name not in df.columns:
-        raise ValueError(f"Column '{labeling_price_column_name}' not found after construct_target_prices.")
-
-
-    # 4. Calculate Other Basic Features (like spread, imbalance, mid_price if different from labeling price)
-    # Ensure this doesn't overwrite the price column used for labeling if it's named differently
-    df = calculate_basic_features(
-        df,
-        num_levels=config.num_levels_features or 10
-    )
-
-    # 5. Create Labels using the SPECIFIC price column constructed in step 3
-    labels = create_labels(
-        df, # Pass the full df again, create_labels will extract the series
-        price_col=labeling_price_column_name, # Use the specific column name
-        method=config.label_method or 'tlob',
-        k=config.label_k or 20,
-        h=config.label_h or 10,
-        alpha=config.label_alpha or 'auto' # Use 'auto' or a specific value
-    )
-    df = pd.concat([df, labels], axis=1) # Add the 'label' column
-
-    # 6. Drop rows with NaN labels (generated at edges or from target price calc)
-    initial_rows = len(df)
-    df.dropna(subset=['label'], inplace=True)
-    rows_dropped = initial_rows - len(df)
-
-    if config.get('verbose', True):
-        print(f"Shape after label creation and NaN drop: {df.shape} ({rows_dropped} rows dropped)")
-        if not df.empty:
-            print("Label distribution:")
-            print(df['label'].value_counts(normalize=True))
-        else:
-             print("Warning: DataFrame is empty after dropping NaN labels.")
-
-
-    # 7. Final Column Selection (Optional - keep only necessary features for model)
-    # Example: keep original LOB features + calculated features + label
-    # feature_cols_to_keep = [...]
-    # df = df[feature_cols_to_keep + ['label']]
-
-    # ... (Rest of the function: saving optional, returning df) ...
-    # Remove the temporary labeling price column if desired
-    if labeling_price_column_name in df.columns and labeling_price_column_name != 'mid_price':
-         df = df.drop(columns=[labeling_price_column_name])
-
-    return df
-
 def _calculate_dynamic_alpha(l_values: pd.Series, method='mean_abs_pct_change') -> float:
     """Calculates alpha dynamically."""
     if method == 'mean_abs_pct_change':
@@ -474,6 +389,92 @@ def _create_labels_cryptolob(df, price_col, k, alpha):
 
 
 # --- Main Orchestration Function ---
+
+def preprocess_lob_data(config):
+    """
+    Loads, preprocesses, adds features, and labels LOB data based on config.
+    """
+    # 1. Load Data
+    df = load_deep_orderbook_dataset(
+        base_path=config.data_path or '../data/deep_orderbook/coinbase/', # Adjusted path
+        num_files=config.num_files or None,
+        precision=config.precision or np.float32,
+        verbose=config.verbose or True
+    )
+    if df is None or df.empty:
+         raise ValueError("Data loading failed or returned empty DataFrame.")
+
+    # 2. Clean Data
+    df = clean_data(
+        df,
+        strategy=config.clean_strategy or 'dropna',
+        verbose=config.verbose or True
+    )
+    if df.empty:
+        raise ValueError("DataFrame is empty after cleaning.")
+
+
+    # 3. Construct the SPECIFIC Target Price Series to use for LABELING
+    label_price_type = config.label_price_type or 'simple_midpoint'
+    label_price_levels = config.label_price_levels or 1
+    target_price_df = construct_target_prices( # This adds 'target_price' to df temporarily
+        df,
+        target_type=label_price_type,
+        num_levels=label_price_levels
+    )
+    # Make sure the target price is added to the main df or extracted correctly
+    # Let's assume construct_target_prices now returns just the series/df to merge
+    df = df.join(target_price_df) # Join based on index
+    labeling_price_column_name = 'target_price' # The column created by construct_target_prices
+
+    if labeling_price_column_name not in df.columns:
+        raise ValueError(f"Column '{labeling_price_column_name}' not found after construct_target_prices.")
+
+
+    # 4. Calculate Other Basic Features (like spread, imbalance, mid_price if different from labeling price)
+    # Ensure this doesn't overwrite the price column used for labeling if it's named differently
+    df = calculate_basic_features(
+        df,
+        num_levels=config.num_levels_features or 10
+    )
+
+    # 5. Create Labels using the SPECIFIC price column constructed in step 3
+    labels = create_labels(
+        df, # Pass the full df again, create_labels will extract the series
+        price_col=labeling_price_column_name, # Use the specific column name
+        method=config.label_method or 'tlob',
+        k=config.label_k or 20,
+        h=config.label_h or 10,
+        alpha=config.label_alpha or 'auto' # Use 'auto' or a specific value
+    )
+    df = pd.concat([df, labels], axis=1) # Add the 'label' column
+
+    # 6. Drop rows with NaN labels (generated at edges or from target price calc)
+    initial_rows = len(df)
+    df.dropna(subset=['label'], inplace=True)
+    rows_dropped = initial_rows - len(df)
+
+    if config.get('verbose', True):
+        print(f"Shape after label creation and NaN drop: {df.shape} ({rows_dropped} rows dropped)")
+        if not df.empty:
+            print("Label distribution:")
+            print(df['label'].value_counts(normalize=True))
+        else:
+             print("Warning: DataFrame is empty after dropping NaN labels.")
+
+
+    # 7. Final Column Selection (Optional - keep only necessary features for model)
+    # Example: keep original LOB features + calculated features + label
+    # feature_cols_to_keep = [...]
+    # df = df[feature_cols_to_keep + ['label']]
+
+    # ... (Rest of the function: saving optional, returning df) ...
+    # Remove the temporary labeling price column if desired
+    if labeling_price_column_name in df.columns and labeling_price_column_name != 'mid_price':
+         df = df.drop(columns=[labeling_price_column_name])
+
+    return df
+
 
 def preprocess_lob_data(config):
     """
