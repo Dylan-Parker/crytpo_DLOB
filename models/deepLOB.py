@@ -17,13 +17,7 @@ class DeepLOB(nn.Module):
         self.input_size = input_size
         self.mode = None
         self.name = "DeepLOB Model"
-        # print out the model architecture when first intializing
-        print(f'Model: {self.name}')
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Model: {self.name}")
-        print(f"\n🧠 Total parameters: {total_params:,}")
-        print(f"🎯 Trainable parameters: {trainable_params:,}")
+
 
         # convolution blocks
         self.conv1 = nn.Sequential(
@@ -92,6 +86,14 @@ class DeepLOB(nn.Module):
         # lstm layers
         self.lstm = nn.LSTM(input_size=192, hidden_size=64, num_layers=1, batch_first=True)
         self.fc1 = nn.Linear(64, 3)
+
+        # print out the model architecture when first intializing
+        print(f'Model: {self.name}')
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        print(f"Model: {self.name}")
+        print(f"\n🧠 Total parameters: {total_params:,}")
+        print(f"🎯 Trainable parameters: {trainable_params:,}")
 
     def forward(self, x):
         x = x.permute(0, 2, 1)

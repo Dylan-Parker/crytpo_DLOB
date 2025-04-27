@@ -109,7 +109,7 @@ def run_single_trial(
     # Combine metrics for saving
     try:
         training_history = {
-            "epochs": np.linspace(1,trainer.n_epochs, trainer.n_epochs),
+            "epochs": np.linspace(1, len(trainer.train_loss), len(trainer.train_loss)), #This change accounts for early stopping
             "train_loss": trainer.train_loss,
             "train_score": trainer.train_score,
             "val_loss": trainer.val_loss,
@@ -123,7 +123,7 @@ def run_single_trial(
             "val_loss": float(trainer.val_loss[best_run]),
             "val_score": float(trainer.val_score[best_run]),
         }
-        if test_dataset:
+        if test_dataset is not None:
             final_results["test_loss"] = float(trainer.test_loss[best_run])
             final_results["test_score"] = float(trainer.test_score[best_run])
 

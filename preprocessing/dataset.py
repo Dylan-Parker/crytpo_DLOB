@@ -54,6 +54,7 @@ class LOBSequenceDataset(Dataset):
         self.features = features_seq
         self.labels = labels_seq
         self.device = device
+        self.seq_len = features_seq.shape[1]
 
     def __len__(self):
         return len(self.features)
