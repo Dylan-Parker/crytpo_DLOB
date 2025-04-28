@@ -23,6 +23,9 @@ class DeepLOB(nn.Module):
         conv_dp = self.config.model.conv_dropout or 0.2
         fc_dp   = self.config.model.fc_dropout or 0.5
         negative_slope = self.config.model.neg_slope or 0.01
+
+        _, num_features, _ = self.input_size
+        width_after_two_halves = num_features // 2 // 2
         # convolution blocks with Dropout2d
         self.conv1 = nn.Sequential(
             nn.Conv2d(1,  32, kernel_size=(1,2), stride=(1,2)),
@@ -55,7 +58,7 @@ class DeepLOB(nn.Module):
         )
 
         self.conv3 = nn.Sequential(
-            nn.Conv2d(32, 32, kernel_size=(1,2)),
+            nn.Conv2d(32, 32, kernel_size=(1,width_after_two_halves)),
             nn.LeakyReLU(negative_slope),
             nn.BatchNorm2d(32),
             nn.Dropout2d(conv_dp),

@@ -26,8 +26,8 @@ class CNNClassifier(nn.Module):
         pad_right = total_pad - pad_left
 
         # dropout probabilities
-        conv_dp = getattr(config.model, 'conv_dropout', 0.2)
-        fc_dp   = getattr(config.model, 'fc_dropout',   0.5)
+        conv_dp = config.model.conv_dropout or 0.1
+        fc_dp   = config.model.fc_dropout or 0.3
 
         # conv + pool
         self.convblock0 = nn.Sequential(
@@ -85,7 +85,7 @@ class CNNClassifier(nn.Module):
 
     def forward(self, x):
         # x: (B, T, F) → conv1d expects (B, F, T)
-        x = x.permute(0, 2, 1)
+        #x = x.permute(0, 2, 1)
 
         x = self.convblock0(x)
         res = x
