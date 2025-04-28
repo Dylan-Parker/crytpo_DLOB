@@ -7,133 +7,110 @@ by Jha et Al. This is the architecture that the main results in that paper are a
 
 import numpy as np
 import torch.nn as nn
-
 class CNNClassifier(nn.Module):
     """
-    Conv2D → Reshape → Conv1D → MaxPool1D → Conv1D → MaxPool1D → BiLSTM → Dense → Dense → Output
-    Input: (batch_size, 100, 40, 1)
+    Conv1D → Residual Blocks → Pooling → AvgPool → Flatten → Dense → Output
+    Input: (batch_size, sequence_length, num_features)
     """
     def __init__(self, config, input_shape, device, input_size):
         super().__init__()
-        # Define CNN layers based on crypto_lob.pdf / basic_cnn_model.ipynb [cite: 1, 5, 39, 94]
-        # e.g., Conv2D -> Reshape -> Conv1D -> Pooling -> Dense [cite: 1, 5]
         self.device = device
         self.batch_size = config.train.batch_size
-        #self.hidden_size=config.model.hidden_size
         self.seq_length = input_shape[1]
         self.num_features = input_shape[2]
-        self.dilation = int(np.log2((self.seq_length-1) / (2* (4-1)) +1))
-        total_pad = self.dilation * (4 - 1)  # e.g. 3
-        pad_left = total_pad // 2  # 1
-        pad_right = total_pad - pad_left  # 2
-        # First Conv2D layer, input (batch_size, 1, 100, 40) -> output (batch_size, 16, 97, 1)
+
+        # dilation and padding calculation
+        self.dilation = int(np.log2((self.seq_length - 1) / (2 * (4 - 1)) + 1))
+        total_pad = self.dilation * (4 - 1)
+        pad_left = total_pad // 2
+        pad_right = total_pad - pad_left
+
+        # dropout probabilities
+        conv_dp = getattr(config.model, 'conv_dropout', 0.2)
+        fc_dp   = getattr(config.model, 'fc_dropout',   0.5)
+
+        # conv + pool
         self.convblock0 = nn.Sequential(
             nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=self.num_features, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.MaxPool1d(2)
+            nn.Conv1d(self.num_features, 16, kernel_size=4, bias=False, dilation=self.dilation),
+            nn.MaxPool1d(2),
+            nn.Dropout1d(conv_dp)
         )
 
-        self.convblock1 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-            nn.ReLU(),
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-        )
+        # residual conv blocks with dropout
+        def make_block(ch):
+            return nn.Sequential(
+                nn.ConstantPad1d((pad_left, pad_right), 0),
+                nn.Conv1d(ch, ch, kernel_size=4, bias=False, dilation=self.dilation),
+                nn.BatchNorm1d(ch),
+                nn.ReLU(),
+                nn.Dropout1d(conv_dp),
+                nn.ConstantPad1d((pad_left, pad_right), 0),
+                nn.Conv1d(ch, ch, kernel_size=4, bias=False, dilation=self.dilation),
+                nn.BatchNorm1d(ch),
+                nn.Dropout1d(conv_dp)
+            )
 
-        self.a1 = nn.ReLU()
+        self.convblock1 = make_block(16)
+        self.convblock2 = make_block(16)
+        self.convblock3 = make_block(16)
 
-        self.convblock2 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-            nn.ReLU(),
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-        )
-
-        self.a2 = nn.ReLU()
-
-        self.convblock3 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-            nn.ReLU(),
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=16, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(16),
-        )
-
-        self.a3 = nn.ReLU()
+        # downsample block
         self.convblock4 = nn.Sequential(
             nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False, padding=0),
+            nn.Conv1d(16, 32, kernel_size=4, stride=2, bias=False),
             nn.BatchNorm1d(32),
             nn.ReLU(),
+            nn.Dropout1d(conv_dp),
             nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
+            nn.Conv1d(32, 32, kernel_size=4, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(32),
+            nn.Dropout1d(conv_dp)
         )
         self.skipblock4 = nn.Sequential(
             nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=4, stride=2, bias=False, padding=0),
-            nn.BatchNorm1d(32),
+            nn.Conv1d(16, 32, kernel_size=4, stride=2, bias=False),
+            nn.BatchNorm1d(32)
         )
-        self.a4 = nn.ReLU()
-        self.convblock5 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.ConstantPad1d((pad_left, pad_right), 0),
-            nn.Conv1d(in_channels=32, out_channels=32, kernel_size=4, padding=0, bias=False, dilation=self.dilation),
-            nn.BatchNorm1d(32),
-        )
-        self.a5 = nn.ReLU()
-        self.pool2 = nn.AvgPool1d(kernel_size=(self.seq_length//2//2))
-        self.flatten = nn.Flatten(start_dim=1)
-        self.fc = nn.Linear(32, 3)  # 3 output classes for softmax
 
-        self.name = "CNN Model"
-        self.input_size = input_size
-        # print out the model architecture when first intializing
-        print(f'Model: {self.name}')
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Model: {self.name}")
-        print(f"\n🧠 Total parameters: {total_params:,}")
-        print(f"🎯 Trainable parameters: {trainable_params:,}")
-        ## todo: get the summary working properly with the right input shape
-        # print_model_info(self, input_size, self.name)
+        self.convblock5 = make_block(32)
+
+        # pooling and classifier
+        self.pool2 = nn.AvgPool1d(kernel_size=(self.seq_length // 4))
+        self.flatten = nn.Flatten(start_dim=1)
+        self.fc = nn.Sequential(
+            nn.Dropout(fc_dp),
+            nn.Linear(32, 3)
+        )
 
     def forward(self, x):
-        #print(x.shape)
+        # x: (B, T, F) → conv1d expects (B, F, T)
+        x = x.permute(0, 2, 1)
+
         x = self.convblock0(x)
-        #print(x.shape)
-        x = self.convblock1(x) + x
-        x = self.a1(x)
-        #print(x.shape)
-        x = self.convblock2(x) + x
-        x = self.a2(x)
-        #print(x.shape)
-        x = self.convblock3(x) + x
-        x = self.a3(x)
-        #print(x.shape)
-        x = self.convblock4(x) + self.skipblock4(x)
-        x = self.a4(x)
-        #print(x.shape)
-        x = self.convblock5(x) + x
-        x = self.a5(x)
-        #print(x.shape)
+        res = x
+        x = self.convblock1(x) + res
+        x = nn.functional.relu(x)
+
+        res = x
+        x = self.convblock2(x) + res
+        x = nn.functional.relu(x)
+
+        res = x
+        x = self.convblock3(x) + res
+        x = nn.functional.relu(x)
+
+        res = x
+        x = self.convblock4(x) + self.skipblock4(res)
+        x = nn.functional.relu(x)
+
+        res = x
+        x = self.convblock5(x) + res
+        x = nn.functional.relu(x)
+
         x = self.pool2(x)
-        #print(x.shape)
         x = self.flatten(x)
-        #print(x.shape)
-        x = self.fc(x)
-        return x
+        return self.fc(x)
 
     def set_train_model(self):
         self.mode = "train"

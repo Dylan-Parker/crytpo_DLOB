@@ -124,8 +124,8 @@ def run_single_trial(
             "val_score": float(trainer.val_score[best_run]),
         }
         if test_dataset is not None:
-            final_results["test_loss"] = float(trainer.test_loss[best_run])
-            final_results["test_score"] = float(trainer.test_score[best_run])
+            final_results["test_loss"] = float(trainer.test_loss[-1])
+            final_results["test_score"] = float(trainer.test_score[-1])
 
         df_training_history = pd.DataFrame(training_history)
         df_final_results = pd.DataFrame([final_results])
