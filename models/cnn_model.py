@@ -1,12 +1,6 @@
-# Reference: /notebooks/CNN Deeplearning v2 (4).ipynb
-# data processing and training available there
-"""
-This is my implementation of the architecture that is pictured in the appendix of the paper "Deep Learning for Digital Asset Limit Order Books"
-by Jha et Al. This is the architecture that the main results in that paper are attributed to.
-"""
-
 import numpy as np
 import torch.nn as nn
+
 class CNNClassifier(nn.Module):
     """
     Conv1D → Residual Blocks → Pooling → AvgPool → Flatten → Dense → Output
@@ -19,56 +13,57 @@ class CNNClassifier(nn.Module):
         self.seq_length = input_shape[1]
         self.num_features = input_shape[2]
 
-        # dilation and padding calculation
+        # dilation for convs
         self.dilation = int(np.log2((self.seq_length - 1) / (2 * (4 - 1)) + 1))
-        total_pad = self.dilation * (4 - 1)
-        pad_left = total_pad // 2
-        pad_right = total_pad - pad_left
+        # causal padding amount for kernel_size=4
+        causal_pad = (4 - 1) * self.dilation
+        # separate pad for downsample first conv (dilation=1)
+        causal_pad_ds = 4 - 1
 
         # dropout probabilities
         conv_dp = config.model.conv_dropout or 0.1
         fc_dp   = config.model.fc_dropout or 0.3
 
-        # conv + pool
+        # initial conv + pool
         self.convblock0 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.ConstantPad1d((causal_pad, 0), 0),
             nn.Conv1d(self.num_features, 16, kernel_size=4, bias=False, dilation=self.dilation),
             nn.MaxPool1d(2),
             nn.Dropout1d(conv_dp)
         )
 
-        # residual conv blocks with dropout
+        # helper for causal residual block
         def make_block(ch):
             return nn.Sequential(
-                nn.ConstantPad1d((pad_left, pad_right), 0),
+                nn.ConstantPad1d((causal_pad, 0), 0),
                 nn.Conv1d(ch, ch, kernel_size=4, bias=False, dilation=self.dilation),
                 nn.BatchNorm1d(ch),
                 nn.ReLU(),
                 nn.Dropout1d(conv_dp),
-                nn.ConstantPad1d((pad_left, pad_right), 0),
+                nn.ConstantPad1d((causal_pad, 0), 0),
                 nn.Conv1d(ch, ch, kernel_size=4, bias=False, dilation=self.dilation),
                 nn.BatchNorm1d(ch),
                 nn.Dropout1d(conv_dp)
             )
 
         self.convblock1 = make_block(16)
-        self.convblock2 = make_block(16)
-        self.convblock3 = make_block(16)
+        #self.convblock2 = make_block(16)
+        #self.convblock3 = make_block(16)
 
-        # downsample block
+        # downsample block with causal padding
         self.convblock4 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.ConstantPad1d((causal_pad_ds, 0), 0),
             nn.Conv1d(16, 32, kernel_size=4, stride=2, bias=False),
             nn.BatchNorm1d(32),
             nn.ReLU(),
             nn.Dropout1d(conv_dp),
-            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.ConstantPad1d((causal_pad, 0), 0),
             nn.Conv1d(32, 32, kernel_size=4, bias=False, dilation=self.dilation),
             nn.BatchNorm1d(32),
             nn.Dropout1d(conv_dp)
         )
         self.skipblock4 = nn.Sequential(
-            nn.ConstantPad1d((pad_left, pad_right), 0),
+            nn.ConstantPad1d((causal_pad_ds, 0), 0),
             nn.Conv1d(16, 32, kernel_size=4, stride=2, bias=False),
             nn.BatchNorm1d(32)
         )
@@ -88,10 +83,12 @@ class CNNClassifier(nn.Module):
         #x = x.permute(0, 2, 1)
 
         x = self.convblock0(x)
+
+
         res = x
         x = self.convblock1(x) + res
         x = nn.functional.relu(x)
-
+        """        
         res = x
         x = self.convblock2(x) + res
         x = nn.functional.relu(x)
@@ -99,6 +96,7 @@ class CNNClassifier(nn.Module):
         res = x
         x = self.convblock3(x) + res
         x = nn.functional.relu(x)
+        """
 
         res = x
         x = self.convblock4(x) + self.skipblock4(res)

@@ -75,8 +75,8 @@ class Trainer:
         self.iter_meter = AverageMeter()
         self.early_stop_patience = self.config.train.early_stop_patience
         self.early_stop_threshold = self.config.train.early_stop_threshold
-        self.use_amp = (self.device.type == "cuda")
-        #self.use_amp = False
+        #self.use_amp = (self.device.type == "cuda")
+        self.use_amp = False
         self.scaler = GradScaler() if self.use_amp else None
         self.output_name = self.config.output_name
         # data loaders
@@ -120,10 +120,13 @@ class Trainer:
 
         self.train_loss = []
         self.train_score = []
+        self.train_f1_per_class = []
         self.val_loss = []
         self.val_score = []
+        self.val_f1_per_class = []
         self.test_loss = []
         self.test_score = []
+        self.test_f1_per_class = []
 
         # model / criterion / optimizer
         self.model = self._build_model().to(self.device)
@@ -253,15 +256,16 @@ class Trainer:
 
         preds_tensor = torch.cat(all_preds)
         target_tensor = torch.cat(all_targets)
-        f1 = multiclass_f1_score(
+        f1_per_class = multiclass_f1_score(
             input=preds_tensor,
             target=target_tensor,
             num_classes=3,
-            average="macro"
+            average=None,
         )
-        score = f1.cpu().numpy()
-        print(f"  ↳ Val loss: {loss:.4f} — Val F₁: {f1:.4f}")
-        return loss, score
+        class_f1 = f1_per_class.cpu().numpy()
+        score = class_f1.mean()
+        print(f"  ↳ Val loss: {loss:.4f} — Val F₁: {score:.4f}")
+        return loss, score, class_f1
 
     def train(self): # -> training_history
         # Main training loop
@@ -275,7 +279,7 @@ class Trainer:
         best_val = float('inf')
         print("Starting Training")
         print(f"Epochs: {self.n_epochs} | Num Batches: {len(self.train_loader)}")
-
+        torch.cuda.empty_cache()
         for epoch in range(1, self.n_epochs + 1):
             t1 = time.perf_counter()
             self.model.set_train_model()
@@ -317,20 +321,25 @@ class Trainer:
             self.train_loss.append(epoch_loss)
             preds_tensor = torch.cat(all_preds)
             target_tensor = torch.cat(all_targets)
-            train_f1 = multiclass_f1_score(
+            f1_per_class = multiclass_f1_score(
                 input=preds_tensor,
                 target=target_tensor,
                 num_classes=3,
-                average="macro"
+                average=None,
             )
-            self.train_score_meter.update(train_f1.cpu().numpy(), 1)
-            self.train_score.append(train_f1.cpu().numpy())
+            class_f1 = f1_per_class.cpu().numpy()
+            train_f1 = class_f1.mean()
+            self.train_score_meter.update(train_f1, 1)
+            self.train_score.append(train_f1)
+            self.train_f1_per_class.append(class_f1)
             print(f"Epoch {epoch}/{self.n_epochs} — "
                   f"Train loss: {epoch_loss:.4f} — Train F₁: {train_f1:.4f}")
 
-            val_loss, val_score = self.evaluate(self.val_loader)
+            val_loss, val_score, val_f1_per_class = self.evaluate(self.val_loader)
             self.val_loss.append(val_loss)
             self.val_score.append(val_score)
+            self.val_f1_per_class.append(val_f1_per_class)
+
             lr = self.scheduler.get_last_lr()
             self.scheduler.step(val_loss)
             new_lr = self.scheduler.get_last_lr()
@@ -371,9 +380,10 @@ class Trainer:
             print("No test dataset provided, skipping final test save.")
 
     def test(self):
-        loss, score = self.evaluate(self.test_loader)
+        loss, score, f1_per_class = self.evaluate(self.test_loader)
         self.test_loss.append(loss)
         self.test_score.append(score)
+        self.test_f1_per_class.append(f1_per_class)
         return loss, score
 
     def save_model(self, name: str = "model.pt"):
