@@ -88,11 +88,12 @@ class CNNClassifier(nn.Module):
         res = x
         x = self.convblock1(x) + res
         x = nn.functional.relu(x)
-        """        
+
+        """   
         res = x
         x = self.convblock2(x) + res
         x = nn.functional.relu(x)
-
+        
         res = x
         x = self.convblock3(x) + res
         x = nn.functional.relu(x)

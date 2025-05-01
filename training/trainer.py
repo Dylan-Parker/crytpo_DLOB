@@ -19,6 +19,7 @@ from models.linear_model import LinearModel
 from models.mlplob_model import MLPLOB
 from models.deepLOB import DeepLOB
 from models.tlob_model import TLOB
+from models.tcn_model import TCNClassifier
 from torcheval.metrics.functional import multiclass_f1_score
 from torch.cuda.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -179,7 +180,16 @@ class Trainer:
             # use len(self.train_ds) for N_windows so that idx-based logic in CNN still works
             input_shape = (len(self.train_ds), seq_len, num_features)
             return CNNClassifier(self.config, input_shape, self.device, self.input_size)
-
+        elif self.config.model.type == "tcn_model":
+            #print("input_size:", self.input_size)
+            batch_size, num_features, _ = self.input_size
+            seq_len = self.train_ds.seq_len #self.train_ds.seq_len
+            #print("batch_size:", batch_size)
+            #print("num_features:", num_features)
+            # Build a dummy input_shape tuple same form as old features.shape=(N_windows, T, F)
+            # use len(self.train_ds) for N_windows so that idx-based logic in CNN still works
+            input_shape = (len(self.train_ds), seq_len, num_features)
+            return TCNClassifier(self.config, input_shape, self.device, self.input_size)
         elif self.config.model.type == "linear_model":
             return LinearModel(self.config, self.device, self.input_size)
         elif self.config.model.type == "mlplob_model":
