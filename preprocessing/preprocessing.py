@@ -6,9 +6,7 @@ import gc
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report
-
-
-
+import re
 
 def reduce_mem_usage(df, precision=np.float32):
     """
@@ -234,38 +232,6 @@ def calculate_basic_features(df, num_levels=10):
 
     return df_feat
 
-def normalize_features(df_train, df_val, df_test, feature_cols):
-    """
-    Applies StandardScaler normalization. Fits on training data only.
-
-    Args:
-        df_train (pd.DataFrame): Training data.
-        df_val (pd.DataFrame): Validation data.
-        df_test (pd.DataFrame): Test data.
-        feature_cols (list): List of column names to normalize.
-
-    Returns:
-        tuple: Normalized (df_train, df_val, df_test), fitted_scaler
-    """
-    from sklearn.preprocessing import StandardScaler
-
-    scaler = StandardScaler()
-
-    # Fit only on training data
-    scaler.fit(df_train[feature_cols])
-
-    # Transform all sets
-    df_train_scaled = df_train.copy()
-    df_val_scaled = df_val.copy()
-    df_test_scaled = df_test.copy()
-
-    df_train_scaled[feature_cols] = scaler.transform(df_train[feature_cols])
-    df_val_scaled[feature_cols] = scaler.transform(df_val[feature_cols])
-    df_test_scaled[feature_cols] = scaler.transform(df_test[feature_cols])
-
-    return df_train_scaled, df_val_scaled, df_test_scaled, scaler
-
-
 # --- Labeling Functions ---
 
 def create_labels(df: pd.DataFrame, price_col='mid_price', method='tlob', k=20, h=10, alpha=0.0002):
@@ -297,8 +263,6 @@ def create_labels(df: pd.DataFrame, price_col='mid_price', method='tlob', k=20, 
         return _create_labels_cryptolob(df, price_col, k, alpha)
     else:
         raise ValueError(f"Unknown labeling method: {method}")
-
-# --- Main Orchestration Function ---
 
 def _calculate_dynamic_alpha(l_values: pd.Series, method='mean_abs_pct_change') -> float:
     """Calculates alpha dynamically."""

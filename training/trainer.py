@@ -4,6 +4,11 @@ import torch
 import random
 import time
 import numpy as np
+import plotly.graph_objects as go
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+from plotly.subplots import make_subplots
 from torch import nn
 from torch.utils.data import DataLoader
 from typing import Optional
@@ -75,8 +80,8 @@ class Trainer:
         self.iter_meter = AverageMeter()
         self.early_stop_patience = self.config.train.early_stop_patience
         self.early_stop_threshold = self.config.train.early_stop_threshold
-        #self.use_amp = (self.device.type == "cuda")
-        self.use_amp = False
+        self.use_amp = (self.device.type == "cuda")
+        #self.use_amp = False
         self.scaler = GradScaler() if self.use_amp else None
         self.output_name = self.config.output_name
         # data loaders
@@ -187,21 +192,13 @@ class Trainer:
             raise ValueError(f"Unsupported model type: {self.config.model.type}")
 
     def _init_criterion(self):
-        #Ridge regression
-        #if loss is not an attribute of config, then use default
         try:
             loss_type = self.config.loss.type.lower()
             if loss_type == "cross_entropy":
                 return nn.CrossEntropyLoss()
-            elif loss_type == 'ridge':
-                l2_lambda = self.config.loss.l2_lambda
-                assert l2_lambda > 0, "L2 lambda must be greater than 0 for Ridge regression"
-                return nn.MSELoss() + l2_lambda * torch.sum(torch.square(self.model.parameters()))
-            ##Lasso regression
-            elif self.config.loss.type.lower() == 'lasso':
-                l1_lambda = self.config.loss.l1_lambda
-                assert l1_lambda > 0, "L1 lambda must be greater than 0 for Lasso regression"
-                return nn.MSELoss() + l1_lambda * torch.sum(torch.abs(self.model.parameters()))
+            elif loss_type in ["ridge", "lasso"]:
+                # Just return CrossEntropyLoss here — regularization will be added manually later
+                return nn.CrossEntropyLoss()
         except AttributeError:
             print("Warning: Loss not specified in config, using default CrossEntropyLoss")
             return nn.CrossEntropyLoss()
@@ -285,7 +282,6 @@ class Trainer:
             self.model.set_train_model()
             all_preds = []
             all_targets = []
-        #
             for i, (x, y) in enumerate(self.train_loader):
                 start_time = time.perf_counter()
                 x, y = x.to(self.device, dtype=torch.float32, non_blocking=True), y.to(self.device, dtype=torch.long, non_blocking=True)
@@ -294,14 +290,46 @@ class Trainer:
                     # CUDA AMP branch
                     with autocast():
                         logits = self.model(x)
-                        loss = self.criterion(logits, y)
+                        prediction_loss = self.criterion(logits, y)
+
+                        # Regularization term
+                        reg_loss = 0.0
+                        if hasattr(self.config.loss, "type"):
+                            if self.config.loss.type.lower() == "ridge":
+                                l2_lambda = self.config.loss.l2_lambda
+                                for param in self.model.parameters():
+                                    reg_loss += torch.sum(param ** 2)
+                                reg_loss = l2_lambda * reg_loss
+                            elif self.config.loss.type.lower() == "lasso":
+                                l1_lambda = self.config.loss.l1_lambda
+                                for param in self.model.parameters():
+                                    reg_loss += torch.sum(torch.abs(param))
+                                reg_loss = l1_lambda * reg_loss
+                        # Total loss
+                        loss = prediction_loss + reg_loss
                     self.scaler.scale(loss).backward()
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
                     # plain float32 branch
                     logits = self.model(x)
-                    loss = self.criterion(logits, y)
+                    prediction_loss = self.criterion(logits, y)
+
+                    # Regularization term
+                    reg_loss = 0.0
+                    if hasattr(self.config.loss, "type"):
+                        if self.config.loss.type.lower() == "ridge":
+                            l2_lambda = self.config.loss.l2_lambda
+                            for param in self.model.parameters():
+                                reg_loss += torch.sum(param ** 2)
+                            reg_loss = l2_lambda * reg_loss
+                        elif self.config.loss.type.lower() == "lasso":
+                            l1_lambda = self.config.loss.l1_lambda
+                            for param in self.model.parameters():
+                                reg_loss += torch.sum(torch.abs(param))
+                            reg_loss = l1_lambda * reg_loss
+                    # Total loss
+                    loss = prediction_loss + reg_loss
                     loss.backward()
                     self.optimizer.step()
 
@@ -394,3 +422,98 @@ class Trainer:
 
     def test_train(self):
         print("testing train function wil work at all")
+    
+    
+    def visualize_attention(self, save_path="./attention_maps/attention_all_layers.png"):
+        """
+        Visualize all attention maps from all layers/heads into one big PNG using Plotly subplots.
+        Now layout is dynamic: rows = number of heads, cols = number of layers.
+        """
+        self.model.eval()
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        with torch.no_grad():
+            for batch_idx, (inputs, targets) in enumerate(self.val_loader):
+                inputs = inputs.to(self.model.device)
+                outputs, attn_maps = self.model(inputs, store_att=True)
+
+                num_layers = len(attn_maps)
+                num_heads = attn_maps[0].shape[1]  # assume all layers have same # of heads
+
+                # Create grid of subplots: rows=heads, cols=layers
+                fig = make_subplots(
+                    rows=num_heads, cols=num_layers,
+                    subplot_titles=[
+                        f"Layer {l} - Head {h}" for h in range(num_heads) for l in range(num_layers)
+                    ],
+                    horizontal_spacing=0.05,
+                    vertical_spacing=0.15
+                )
+
+                for layer_idx, attn in enumerate(attn_maps):
+                    attn = attn[0]  # first example in batch
+                    for head_idx in range(num_heads):
+                        row = head_idx + 1
+                        col = layer_idx + 1
+                        fig.add_trace(
+                            go.Heatmap(
+                                z=attn[head_idx].cpu().numpy(),
+                                colorscale="Viridis",
+                                colorbar=dict(title="Weight") if (row == 1 and col == num_layers) else None,
+                                showscale=(row == 1 and col == num_layers)
+                            ),
+                            row=row, col=col
+                        )
+
+                fig.update_layout(
+                    title_text=f"Attention Maps for Batch {batch_idx}",
+                    height=350 * num_heads,
+                    width=300 * num_layers,
+                    showlegend=False,
+                    font=dict(size=14),
+                )
+
+                fig.write_image(save_path)
+                break  # visualize only one batch
+
+    def plot_combined_confusion_matrices(self, save_path="./confusion_matrices.png"):
+        """
+        Plot and save confusion matrices for train, val, and test sets in one combined image.
+        """
+        self.model.set_eval_mode()
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        titles = ["Train", "Validation", "Test"]
+        loaders = [self.train_loader, self.val_loader, self.test_loader if self.test_ds else None]
+
+        for i, (title, loader) in enumerate(zip(titles, loaders)):
+            if loader is None:
+                axes[i].axis("off")
+                continue
+
+            all_preds, all_targets = [], []
+            with torch.no_grad():
+                for x, y in loader:
+                    x = x.to(self.device, dtype=torch.float32, non_blocking=True)
+                    y = y.to(self.device, dtype=torch.long, non_blocking=True)
+                    logits = self.model(x)
+                    preds = logits.argmax(dim=1)
+                    all_preds.append(preds.cpu())
+                    all_targets.append(y.cpu())
+
+            y_true = torch.cat(all_targets).numpy()
+            y_pred = torch.cat(all_preds).numpy()
+            num_classes = self.config.model.num_classes if hasattr(self.config.model, "num_classes") else 3
+            cm = confusion_matrix(y_true, y_pred, labels=list(range(num_classes)))
+
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt='d',
+                cmap='Blues',
+                xticklabels=range(num_classes),
+                yticklabels=range(num_classes),
+                ax=axes[i]
+            )
+            axes[i].set_title(f"{title} Confusion Matrix")
+            axes[i].set_xlabel("Predicted")
+            axes[i].set_ylabel("True")

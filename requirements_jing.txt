@@ -12,3 +12,4 @@ torchinfo
 torcheval
 torchmetrics
 einops
+kaleido
